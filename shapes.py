@@ -1,4 +1,3 @@
-#from openscad import *
 import openscad as scad
 from transforms import *
 from collections import namedtuple
@@ -31,23 +30,25 @@ RAD_180 = np.pi
 RAD_270 = RAD_180 + RAD_90
 tau = 2 * np.pi
 
-'''
-Check if a variable is a tuple or a list
-
-Note: 'isinstance' is not used in this case because I don't want to
-      identify classes derived from these as a 'tup'
-'''
 def is_tup(var):
+    """
+    Check if a variable is a tuple or a list
+
+    Note: 'isinstance' is not used in this case because I don't want to
+          identify classes derived from these as a 'tup'
+    """
+
     return type(var) == tuple or type(var) == list
 
-'''
-Convert a scaler or tupple/list to a tupple of a defined dimension
-
-val     -   Value to convert
-dim     -   Dimension of the output tuple
-fill    - Value to fill new elements with. Repeat last element if fill is None
-'''
 def tup(val, dim, fill=None):
+    """
+    Convert a scaler or tupple/list to a tupple of a defined dimension
+
+    val     -   Value to convert
+    dim     -   Dimension of the output tuple
+    fill    - Value to fill new elements with. Repeat last element if fill is None
+    """
+
     if val is None: return None
     if is_tup(val):
         l = len(val)
@@ -55,17 +56,18 @@ def tup(val, dim, fill=None):
         return tuple(val[ii] if ii < l else fill for ii in range(dim))
     return tuple(val for ii in range(dim))
 
-'''
-Convert a scaler or tupple/list to a list of a defined dimension
-
-Note:   I would have just used 'tup' but OpenSCAD does not permit 'tuple' where
-        lists are expected as arguments
-
-val     -   Value to convert
-dim     -   Dimension of the output tuple
-fill    - Value to fill new elements with. Repeat last element if fill is None
-'''
 def lst(val, dim, fill=None):
+    """
+    Convert a scaler or tupple/list to a list of a defined dimension
+
+    Note:   I would have just used 'tup' but OpenSCAD does not permit 'tuple' where
+            lists are expected as arguments
+
+    val     -   Value to convert
+    dim     -   Dimension of the output tuple
+    fill    - Value to fill new elements with. Repeat last element if fill is None
+    """
+
     if val is None: return None
     if is_tup(val):
         l = len(val)
@@ -73,16 +75,15 @@ def lst(val, dim, fill=None):
         return tuple(val[ii] if ii < l else fill for ii in range(dim))
     return [val for ii in range(dim)]
 
-'''
-center_arc
-
-Create a set of points defining an arc centered on a point with an angle range
-
-r       - Radius of the arc
-center  - Center point of the arc
-angle_rnage - Tuple defining the start and sweep angles
-'''
 def center_arc(r, center, angle_range):
+    """
+    Create a set of points defining an arc centered on a point with an angle range
+
+    r       - Radius of the arc
+    center  - Center point of the arc
+    angle_rnage - Tuple defining the start and sweep angles
+    """
+
     start = angle_range[0]
     angle = angle_range[1] - angle_range[0]
 
@@ -96,15 +97,14 @@ def center_arc(r, center, angle_range):
 
     return points
 
-'''
-corner_arc
-
-Create a set of points defining an arc spanning it's tangent points on 2 corner vectors
-
-r       - Radius of the arc
-corner  - 2 Vectors defining a corner
-'''
 def corner_arc(r, corner):
+    """
+    Create a set of points defining an arc spanning it's tangent points on 2 corner vectors
+
+    r       - Radius of the arc
+    corner  - 2 Vectors defining a corner
+    """
+
     (cp, n, tp1, tp2) = circle_2tan(r, corner)
 
     dir         = det2d(corner[1] - corner[0], corner[2] - corner[1]) > 0
@@ -115,16 +115,15 @@ def corner_arc(r, corner):
     angle_range = [theta_start, theta_start + angle] if dir else [theta_start + angle, theta_start]
     return center_arc(r, cp, angle_range)
 
-'''
-arc
-
-Create an arc by specifying either a corner tangent or center point with angle range
-
-center          - Center point. Can not be used with 'corner'
-angle_ranage    - 2-Touple specifying angle start and sweep. Can not be used with 'corner'
-corner          - 2-Touple of Vectors specifying a corner tangent. Can not be used with 'center' or 'angle_range'
-'''
 def arc(r, center=None, angle_range=None, corner=None):
+    """
+    Create an arc by specifying either a corner tangent or center point with angle range
+
+    center          - Center point. Can not be used with 'corner'
+    angle_ranage    - 2-Touple specifying angle start and sweep. Can not be used with 'corner'
+    corner          - 2-Touple of Vectors specifying a corner tangent. Can not be used with 'center' or 'angle_range'
+    """
+
     if corner is not None:
         return corner_arc(r, Points(corner, affine=True))
     else:
@@ -132,32 +131,32 @@ def arc(r, center=None, angle_range=None, corner=None):
         angle_range = [0, tau] if angle_range is None else angle_range
         return center_arc(r, center, angle_range)
 
-'''
-EdgeTreatment
-
-Used for specifying rounding and chamfering of edges
-
-chamf   - length of chamfer
-chang   - angle of chamfer
-round   - radius of rounding
-'''
 @dataclass()
 class EdgeTreatment():
+    """
+    EdgeTreatment
+
+    Used for specifying rounding and chamfering of edges
+
+    chamf   - length of chamfer
+    chang   - angle of chamfer
+    round   - radius of rounding
+    """
+
     chamf   : float = None
     chang   : float = None
     round   : float = None
 
-'''
-cyl_path
-
-Create a path for generating a cylinder using 'rotate_extrude'
-The path supports 'EntTreatments' that allow inside and outside chamfering and rounding
-
-r       - Radius of top and bottom of cylinder. 2-tuple if top and bottom have different radii
-l       - Length of the cylinder.
-ends    - See 'EdgeTreatment'. 2-tuple if top and bottom have different end treatments
-'''
 def cyl_path(r, l, ends=None):
+    """
+    Create a path for generating a cylinder using 'rotate_extrude'
+    The path supports 'EndTreatments' that allow inside and outside chamfering and rounding
+
+    r       - Radius of top and bottom of cylinder. 2-tuple if top and bottom have different radii
+    l       - Length of the cylinder.
+    ends    - See 'EdgeTreatment'. 2-tuple if top and bottom have different end treatments
+    """
+
     r           = tup(r, 2)
     ends        = tup(ends, 2)
 
@@ -224,14 +223,13 @@ def cyl_path(r, l, ends=None):
 
     return Points.concat_init([pre, bot, top, post])
 
-'''
-FaceMetrics
-
-Metrics collected from the faces in an 'Object' mesh. These metrics are used to position
-objects relative to another object's face.
-'''
 @dataclass()
 class FaceMetrics():
+    """
+    Metrics collected from the faces in an 'Object' mesh. These metrics are used to position
+    objects relative to another object's face.
+    """
+
     normal : Vector = None  # A unit vector perpendicular to the face.
     matrix : Matrix = None  # Transform matrix maping coordinates onto a face.
                             # 'matrix' will transform points to be relative to the center
@@ -251,33 +249,35 @@ class FaceMetrics():
     size   : list   = None  # the size of the face, used for filtering out small faces
                             # The size is defined by a square bounding box that contains all face points
 
-'''
-Face
-
-The points defining an object face and the calculated metrics of the face.
-'''    
 @dataclass()
 class Face():
+    """
+    The points defining an object face and the calculated metrics of the face.
+    """
+
     points  : Points        = None
     metrics : FaceMetrics   = None
 
 @dataclass()
 class Attachment():
+    """
+    Data needed to rebase attachments if a parent object changes position or orientation
+    """
+
     parent_face : Face      = None
     child       : ...       = None
 
-'''
-Object
-
-Base class for all OpenSCAD objects. This allows adding features that are "missing"
-from the openscad module. I put "missing" in quotes because TBH, for most of these 
-features it is probably better to implement them in Python code rather than native. 
-So far, I have found that the foundation supplied by the openscad module it enough.
-
-It would be nice however if the openscad module supplied a base class that I could
-subclass from.  I have hacked around this with some '__getattr__' magic.
-'''
 class Object():
+    """
+    Base class for all OpenSCAD objects. This allows adding features that are "missing"
+    from the openscad module. I put "missing" in quotes because TBH, for most of these 
+    features it is probably better to implement them in Python code rather than native. 
+    So far, I have found that the foundation supplied by the openscad module it enough.
+
+    It would be nice however if the openscad module supplied a base class that I could
+    subclass from.  I have hacked around this with some '__getattr__' magic.
+    """
+
     def __init__(self):
         self.name           = "Base"
         self.oscad_obj      = None
@@ -285,14 +285,15 @@ class Object():
         self.attachments    = []
         self.parent         = None
 
-    '''
-    Pass any attribute references that haven't been defined by me down to OpenSCAD
-    if they are defined by the OpenSCAD object.
-
-    Note:   I would have done this with subclassing.  But python openscad does not
-            appear to have any base class to subclass off of.
-    '''
     def __getattr__(self, attr):
+        """
+        Pass any attribute references that haven't been defined by me down to OpenSCAD
+        if they are defined by the OpenSCAD object.
+
+        Note:   I would have done this with subclassing.  But python openscad does not
+                appear to have any base class to subclass off of.
+        """
+
         if hasattr(self.getobj(), attr):
             if callable(getattr(self.getobj(), attr)):
                 def redirect(*args, **kwargs):
@@ -304,33 +305,39 @@ class Object():
             assert False, f"Object '{self.name}' has no attribute '{attr}'"
 
     def dir_oscad_obj(self, msg=None):
+        """
+        Helper to show the currently available attributes available in OpenSCAD Python objects.
+        This unfortunately does not show all that is available because the OpenSCAD module does
+        not provide an `__dict__` interface. So it's `origin` attribute is hidden.
+        """
+
         print("Object: ", self.oscad_obj)
         print(f"{msg} - Dir:")
         print(dir(self.oscad_obj))
 
-    '''
-    Pass subtraction (difference) operator to OpenSCAD objects.
-    Unfortunately, there does not appear to be a catch-all method of handling
-    operator overload like there is for method attributes
-    '''
     def __sub__(self, other):
+        """
+        Pass operators to OpenSCAD objects.
+        Unfortunately, there does not appear to be a catch-all method of handling
+        operator overload like there is for method attributes
+        """
         return self.oscad_obj - other.oscad_obj
     def __add__(self, other):
         return self.oscad_obj + other.oscad_obj
     def __or__(self, other):
         return self.oscad_obj | other.oscad_obj
 
-    '''
+    """
     TODO: Create object modifiers to allow different visualizations
           E.g. Wireframe, ghost, etc
-    '''
+    """
     def getobj(self):
         return self.oscad_obj
 
-    '''
-    Aliases for "translate"
-    '''
     def up(self, val):
+        """
+        Aliases for "translate"
+        """
         o = Object(self)
         o.oscad_obj = self.oscad_obj.translate(up(val))
         return o
@@ -355,21 +362,25 @@ class Object():
         o.oscad_obj = self.oscad_obj.translate(bk(val))
         return o
 
-    # Faces are not created till needed. Then they are cached
     def faces(self):
+        """
+        Computes face attributes on demand and caches the results
+        """
+
         if self.face_cache is None:
             self.face_cache = Faces(self)
         return self.face_cache
 
-    '''
-    Called on child object to attach to a parent at the position specifiec by face
-    parent      - The parent object being linked to
-    face        - A reference to a 'face' of the parent. This can be a face retrieved from
-                  class Faces, or it can be a vector specifying the direction to use to find a face.
-                  E.g. using the vector 'rt()' will lookup the face whose normal vector is the
-                  closest match to 'rt()' (i.e. the right face).
-    '''
     def attach(self, parent, face):
+        """
+        Called on child object to attach to a parent at the position specifiec by face
+        parent      - The parent object being linked to
+        face        - A reference to a 'face' of the parent. This can be a face retrieved from
+                      class Faces, or it can be a vector specifying the direction to use to find a face.
+                      E.g. using the vector 'rt()' will lookup the face whose normal vector is the
+                      closest match to 'rt()' (i.e. the right face).
+        """
+
         parent_faces    = parent.faces()
         parent_face     = parent_faces[face];
         self.oscad_obj = self.getobj().align(parent_face.metrics.origin.list())
@@ -378,21 +389,25 @@ class Object():
         return self
 
     def register_child(self, attachment):
+        """
+        Register attached children.  If the position or orientation of parent is changed after
+        attachments are made, child origins need to be recomputed.
+        """
         if attachment not in self.attachments:
             self.attachments.append(attachment)
 
-'''
-cube
-
-Subclass of 'Ojbect'. 
-
-So far, just your standard everyday cube
-
-size    - [width, depth, height]. If passed a scaler, width, depth, and height are all the same value
-center  - Centers the cube on the current origin. Else the cube is positioned with it's bottom-front-left
-          corner at the current origin
-'''
 class cube(Object):
+    """
+    Subclass of 'Ojbect'. 
+
+    So far, just your standard everyday cube. Cubes are useful test objects, so this is one of my
+    first object overloads.
+
+    size    - [width, depth, height]. If passed a scaler, width, depth, and height are all the same value
+    center  - Centers the cube on the current origin. Else the cube is positioned with it's bottom-front-left
+              corner at the current origin
+    """
+
     def __init__(self, size, center=False):
         super().__init__()
 
@@ -401,18 +416,17 @@ class cube(Object):
         self.oscad_obj = scad.cube(size, center)
 
 
-'''
-cylinder.
-
-Subclass of 'Object'. 
-
-The cylinder supports 'EntTreatments' that allow inside and outside chamfering and rounding.
-
-r       - Radius of top and bottom of cylinder. 2-tuple if top and bottom have different radii
-l       - Length of the cylinder.
-ends    - See 'EdgeTreatment'. 2-tuple if top and bottom have different end treatments
-'''
 class cylinder(Object):
+    """
+    Subclass of 'Object'. 
+
+    The cylinder supports 'EndTreatments' that allow inside and outside chamfering and rounding.
+
+    r       - Radius of top and bottom of cylinder. 2-tuple if top and bottom have different radii
+    l       - Length of the cylinder.
+    ends    - See 'EdgeTreatment'. 2-tuple if top and bottom have different end treatments
+    """
+
     def __init__(self, r, l, ends):
         super().__init__()
 
@@ -420,30 +434,29 @@ class cylinder(Object):
         cpath           = cyl_path(r, l, ends)
         self.oscad_obj  = scad.polygon(cpath.deaffine().list()).rotate_extrude()
 
-'''
-prisnoid
-
-Subclass of 'Object'
-
-A prisnoid is a prism like object who's top and bottom faces are parallel. The top and bottom
-faces may be of differing sizes and the top face may be offset from the center point. Each corner
-is defined by a sphere which may be of differeing radii. So all edges are rounded and edge
-roundness tapers from one corner sphere radius to the next.
-
-size1   - [width, depth] size of the bottom of the prisnoid. 
-          May be a scaler in which case width and depth are the same
-size2   - [width, depth] size of the top of the prisnoid. 
-          May be a scaler in which case width and depth are the same
-round1  - Tuple specifying the radius of the spheres of the bottom of the prisnoid.
-          Order of the tuple starts with back right (+X+Y) and goes counter-clockwise.
-          May be a scaler in which all spheres are of the same radius.
-round2  - Tuple specifying the radius of the spheres of the top of the prisnoid.
-          Order of the tuple starts with back right (+X+Y) and goes counter-clockwise.
-          May be a scaler in which all spheres are of the same radius.
-h       - Height of the prisnoid
-shift   - [x, y] offset of the top of the prisnoid relative to the bottom
-'''
 class prisnoid(Object):
+    """
+    Subclass of 'Object'
+
+    A prisnoid is a prism like object who's top and bottom faces are parallel. The top and bottom
+    faces may be of differing sizes and the top face may be offset from the center point. Each corner
+    is defined by a sphere which may be of differeing radii. So all edges are rounded and edge
+    roundness tapers from one corner sphere radius to the next.
+
+    size1   - [width, depth] size of the bottom of the prisnoid. 
+              May be a scaler in which case width and depth are the same
+    size2   - [width, depth] size of the top of the prisnoid. 
+              May be a scaler in which case width and depth are the same
+    round1  - Tuple specifying the radius of the spheres of the bottom of the prisnoid.
+              Order of the tuple starts with back right (+X+Y) and goes counter-clockwise.
+              May be a scaler in which all spheres are of the same radius.
+    round2  - Tuple specifying the radius of the spheres of the top of the prisnoid.
+              Order of the tuple starts with back right (+X+Y) and goes counter-clockwise.
+              May be a scaler in which all spheres are of the same radius.
+    h       - Height of the prisnoid
+    shift   - [x, y] offset of the top of the prisnoid relative to the bottom
+    """
+
     def __init__(self, size1, size2, round1, round2, h, shift=None):
         super().__init__()
 
@@ -471,20 +484,17 @@ class prisnoid(Object):
         self.oscad_obj = hull(*spheres)
 
 
-'''
-Faces
-
-Class for dealing with faces in an 'Object' mesh.
-'''
 class Faces():
-    '''
-    __init__
-
-    Creates a list of 'FaceMetrics' from the faces in an 'Object' mesh
-
-    object  - The 'Ojbect' to process
-    '''
+    """
+    Class for dealing with faces in an 'Object' mesh.
+    """
     def __init__(self, object):
+        """
+        Creates a list of 'FaceMetrics' from the faces in an 'Object' mesh
+
+        object  - The 'Object' to process
+        """
+
         # Stash the object origin and inverse transform matrix for use with attachments
         self.origin = Matrix(affine=True, val=object.origin)
         self.i_origin = self.origin.inv()
@@ -495,7 +505,6 @@ class Faces():
         # I want all values *except* FaceMetrics.origin to be independent of the objects
         # current position and orientation.
         self.points = self.i_origin @ Points(mesh[0])
-        print("mesh", mesh[0])
         self.faces  = mesh[1]
         self.faceMetrics = []
 
@@ -530,7 +539,6 @@ class Faces():
             toXY[0][3]      = -(bound_lo[0] + fm.size[0] / 2)
             toXY[1][3]      = -(bound_lo[1] + fm.size[1] / 2)
             toXY[2][3]      = -z_off
-            print("zoff", z_off)
 
             # matrix is a transformation matrix that is used to map attached objects 
             # onto faces. First the 'origin' of the object the face belongs to is applied
@@ -541,7 +549,6 @@ class Faces():
             # the face in one go.  This must be updated if the parent object's position or orientation
             # is changed after these face metrics have been calculated.
             fm.origin       = fm.matrix @ self.origin
-            print("orig", fm.origin.round())
 
             # Put the face on the XY plane so we can do some calculations more easily
             normalized_face = toXY @ face
@@ -557,21 +564,16 @@ class Faces():
             sum -= normalized_face[l - 1][1] * normalized_face[0][0]
             fm.area = np.fabs(sum / 2)
 
-            print("face", normalized_face.round()) 
-            print("n face", normalized_face.round()) 
-            print("bound", bound_hi, bound_lo)
-
             self.faceMetrics.append(fm)
 
-    '''
-    get_points
-
-    Retreive a list of 'Points' that defines a face
-
-    desc    - Reference to a face. Can be an index into the mesh's list of faces, or a list of
-              indexes into the mesh's list of points.
-    '''
     def get_points(self, desc):
+        """
+        Retreive a list of 'Points' that defines a face
+
+        desc    - Reference to a face. Can be an index into the mesh's list of faces, or a list of
+                  indexes into the mesh's list of points.
+        """
+
         if isinstance(desc, int):
             return Points([self.points[pt] for pt in self.faces[idx]], affine=self.points.is_affine)
         elif isinstance(desc, list):
@@ -579,28 +581,27 @@ class Faces():
         else:
             assert False, f"Invalid reference type for face points {type(desc)}"
 
-    '''
-    face
-
-    Retrieve a 'Face'
-
-    idx - Index into the mesh's list of faces
-    '''
     def face(self, idx):
+        """
+        Retrieve a 'Face'
+
+        idx - Index into the mesh's list of faces
+        """
+
         face = Face(points = Points([self.points[pt] for pt in self.faces[idx]], affine=self.points.is_affine),
                   metrics = self.faceMetrics[idx])
         return face
 
-    '''
-    nearest
-
-    Retrieve the 'Face' who's 'normal' is the closest match to a given vector.
-    This can be used to find the appropriate face when you wish to attach to the "front" of an
-    object and don't know what particular face that is.
-
-    vec - The vector to compare face normals with
-    '''
     def nearest(self, vec):
+        """
+        Retrieve the 'Face' who's 'normal' is the closest match to a given vector.
+
+        This can be used to find the appropriate face when you wish to attach to the "front" of an
+        object and don't know what particular face that is.
+
+        vec - The vector to compare face normals with
+        """
+
         ii = 0
         nearest_angle   = tau
         nearest         = 0
@@ -611,29 +612,26 @@ class Faces():
                 nearest_angle   = angle
             ii += 1
 
-        print("nearest", nearest)
         return self.face(nearest)
 
-    '''
-    __len__
-
-    The number of faces
-    '''
     def __len__(self):
+        """
+        The number of faces
+        """
+
         return len(self.faces)
 
-    '''
-    __getitem__
-
-    Retrieves a 'Face' given a key. The key can be an integer, a slice, or a Vector.
-    if the key is an integer, the Nth face in the mesh's face list is returned.
-    if the key is a slice, a slice of 'Face's is returned.
-    If the key is a Vector the face whose 'normal' is the closest match to the vector is returned.
-
-    key - A reference to a 'Face' or list of 'Face's
-    '''
     def __getitem__(self, key):
-        print("Faces __getitem__", key, type(key))
+        """
+        Retrieves a 'Face' given a key. The key can be an integer, a slice, or a Vector.
+
+        if the key is an integer, the Nth face in the mesh's face list is returned.
+        if the key is a slice, a slice of 'Face's is returned.
+        If the key is a Vector the face whose 'normal' is the closest match to the vector is returned.
+
+        key - A reference to a 'Face' or list of 'Face's
+        """
+
         if isinstance(key, Face):
             return key
         if isinstance(key, Vector):

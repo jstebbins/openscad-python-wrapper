@@ -1,16 +1,19 @@
-import array as ar
-import numbers
-import copy
-#from math import *
 import numpy as np
 from utils import get_fnas
 
 eps = 1e-6
 
 def is_vec(var):
+    """
+    Check if var is one of the vector types we can deal with
+    """
     return isinstance(var, Vector) or isinstance(var, tuple) or isinstance(var, list) or isinstance(var, np.ndarray)
 
 def vec(val, dim, fill=None):
+    """
+    Make a scaler or vector into a vector of a given dimension
+    """
+
     if val is None: return None
     if is_vec(val):
         l = len(val)
@@ -19,15 +22,31 @@ def vec(val, dim, fill=None):
     return Vector([val for ii in range(dim)]);
 
 def point3d(val):
+    """
+    Make a scaler of vector into a vector of size 3 and zero fill
+    """
+
     return vec(val, 3, fill=0)
 
 def point2d(val):
+    """
+    Make a scaler of vector into a vector of size 2 and zero fill
+    """
+
     return vec(val, 2, fill=0)
 
 def is_matrix(var):
+    """
+    Is is a Matrix?
+    """
+
     return isinstance(var, Matrix);
 
 class Affine():
+    """
+    Some useful affine transformation matricies
+    """
+
     def trans3d(v=[0, 0, 0]):
         v = vec(v, 3);
         m =  [ 
@@ -136,6 +155,11 @@ class Affine():
 
 
 class Matrix():
+    """
+    Some general purpose matrix functions with the ability to transparently
+    convert operands to affine when required.
+    """
+
     def __init__(self, val=None, affine=False):
         self.is_affine = affine
         self.matrix = None
@@ -309,6 +333,10 @@ class Matrix():
         return Matrix(np.linalg.inv(self.matrix), affine=self.is_affine)
 
 class Vector(Matrix):
+    """
+    Single dimension Matrix needs a little special treatment
+    """
+
     def __init__(self, val=None, affine=False):
         super().__init__(val, affine)
 
@@ -356,6 +384,10 @@ class Vector(Matrix):
                 self[2] if name == "z" else super().__getattr__(self, name))
 
 class Points(Matrix):
+    """
+    Points are a stack of single dimension Matricies, so also need some special treatment
+    """
+
     def __init__(self, val=None, affine=False):
         super().__init__(val, affine)
 
@@ -399,6 +431,9 @@ class Points(Matrix):
     def mean(self):
         return sum(v for v in self.matrix) / len(self.matrix)
 
+"""
+Helper vectors and functions that return vectors
+"""
 RT = Vector([ 1,  0,  0 ])
 LT = Vector([-1,  0,  0 ])
 BK = Vector([ 0,  1,  0 ])
@@ -437,37 +472,10 @@ def ft(v=1):
 def bk(v=1):
     return (BK * v).deaffine().list()
 
-#m = Matrix([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-#v = Vector([2, 2, 2])
-#print("v @ v", v @ v)
-#print("v * 3", v * 3)
-#print("v / 3", v / 3)
-#print("v + 3", v + 3)
-#print("v + v", v + v)
-#print("v - 3", v - 3)
-#print("3 - v", 3 - v)
-#print("m @ v", m @ v)
-#print("* 2", m * 2)
-#print("affine", m.affine())
-#print("list", m.list())
-#n = Matrix([[0, 1, 0], [1, 0, 0], [0, 0, 0]])
-#v = Matrix([1, 2, 3])
-#nm = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-#nn = nm.resize(4,4)
-#print("nm", nm)
 
-#b = np.array([[0, 1], [2, 3]])
-#b.resize(2, 3) # new_shape parameter doesn't have to be a tuple
-#print(b)
-#print(np.cos(np.pi))
-#j = Affine.xrot3d(np.radians(45))
-#print(j, j.is_affine)
-#k = j.inv()
-#print(k, k.is_affine)
-#i = j @ k
-#print("rot inv ident", j, k, i)
-#print("rot inv ident", j.list(), k.list(), i.list())
-
+"""
+Some extra trig and linear algebra utilities that I needed
+"""
 
 def mean(val):
     return sum(v for v in val) / len(val)
@@ -529,11 +537,12 @@ def polar_to_xy(r, theta):
     return [ r * np.cos(theta), r * np.sin(theta) ]
 
 
-'''
-Computes the number of segments to construct rounded objects out of
-based on the limits set by the special variables fn, fs, and fa
-'''
 def segs(r):
+    """
+    Computes the number of segments to construct rounded objects out of
+    based on the limits set by the special variables fn, fs, and fa
+    """
+
     (fn, fa, fs) = get_fnas()
     if fn != None and fn > 0:
         if fn > 3: return fn
