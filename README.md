@@ -1,6 +1,17 @@
 # openscad-python-wrapper
 Wraps OpenSCAD's python support with some helpful additional features
 
+This is far from complete or usable (IMO). I'm working on it...
+
+It has BUGS. It doesn't work as advertised. It's API is unstable.
+
+But I'm making it more useful on an ongoing basis and its creation
+helps me better understand the strengths and weaknesses of
+Python in OpenSCAD.
+
+I'm making it public on github to serve as example code to anyone
+that has an interest in trying out OpenSCAD's Python support.
+
 Notes:
 
 I'm running OpenSCAD on Fedora Linux using the AppImage Development Snapshots.
