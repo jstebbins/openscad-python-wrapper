@@ -21,7 +21,7 @@ Next, install numpy and any other Python libs you might find helpful.
 `PIP_TARGET=~/OscadPy/lib/python3.10/site-packages/ OpenSCAD-2025.06.22.ai25960-x86_64.AppImage --python-module pip install numpy`
 
 Running pip this way is required because of how the AppImage is packaged. The `python` executable isn't installed to
-the venv, but instead a link is placed there to /sys/self/exe which is useless to anyone but the running copy of OpenSCAD.
+the venv, but instead a link is placed there to `/sys/self/exe` which is useless to anyone but the running copy of OpenSCAD.
 
 Specifying `PIP_TARGET` is necessary, otherwise it installs to your default local python library dir instead of the venv.
 
