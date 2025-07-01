@@ -4,10 +4,11 @@ from collections import namedtuple
 import time
 import inspect
 from dataclasses import dataclass
+import copy
 
 fn = None
-fa = 5
-fs = 5
+fa = 10
+fs = 10
 
 prof_start = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
 prof_last  = prof_start
@@ -242,9 +243,6 @@ class FaceMetrics():
                             # !!Warining: 'origin' must be recalculated if the face's object's
                             #             position or orientation is changed after computing
                             #             FaceMetrics
-    xrot   : float  = None  # xrot, yrot, and zoff provide another way of performing the 'matrix' transform
-    xrot   : float  = None
-    zoff   : float  = None
     area   : float  = None  # The area of the face, used for filtering out small faces
     size   : list   = None  # the size of the face, used for filtering out small faces
                             # The size is defined by a square bounding box that contains all face points
@@ -278,9 +276,9 @@ class Object():
     subclass from.  I have hacked around this with some '__getattr__' magic.
     """
 
-    def __init__(self):
+    def __init__(self, oscad_obj=None):
         self.name           = "Base"
-        self.oscad_obj      = None
+        self.oscad_obj      = oscad_obj
         self.face_cache     = None
         self.attachments    = []
         self.parent         = None
@@ -321,11 +319,13 @@ class Object():
         Unfortunately, there does not appear to be a catch-all method of handling
         operator overload like there is for method attributes
         """
-        return self.oscad_obj - other.oscad_obj
+        return Object(self.oscad_obj - other.oscad_obj)
     def __add__(self, other):
-        return self.oscad_obj + other.oscad_obj
+        return Object(self.oscad_obj + other.oscad_obj)
     def __or__(self, other):
-        return self.oscad_obj | other.oscad_obj
+        return Object(self.oscad_obj | other.oscad_obj)
+    def __ror__(self, other):
+        return Object(self.oscad_obj | other.oscad_obj)
 
     """
     TODO: Create object modifiers to allow different visualizations
@@ -383,10 +383,10 @@ class Object():
 
         parent_faces    = parent.faces()
         parent_face     = parent_faces[face];
-        self.oscad_obj = self.getobj().align(parent_face.metrics.origin.list())
-        parent.register_child(Attachment(parent_face=parent_face, child=self))
+        obj = Object(self.getobj().align(parent_face.metrics.origin.list()))
+        parent.register_child(Attachment(parent_face=parent_face, child=obj))
 
-        return self
+        return obj
 
     def register_child(self, attachment):
         """
@@ -478,11 +478,20 @@ class prisnoid(Object):
             [-(sz2[0] / 2 - rnd2[2]) + sh[0], -(sz2[1] / 2 - rnd2[2]) + sh[1],  (h / 2 - rnd2[2])],
             [ (sz2[0] / 2 - rnd2[3]) + sh[0], -(sz2[1] / 2 - rnd2[3]) + sh[1],  (h / 2 - rnd2[3])],
         )
-        spheres = (tuple(sphere(rnd1[ii]).translate(bot_corners[ii]) for ii in range(4)) +
-                   tuple(sphere(rnd2[ii]).translate(top_corners[ii]) for ii in range(4)))
+        spheres = (tuple(scad.sphere(rnd1[ii]).translate(bot_corners[ii]) for ii in range(4)) +
+                   tuple(scad.sphere(rnd2[ii]).translate(top_corners[ii]) for ii in range(4)))
     
-        self.oscad_obj = hull(*spheres)
+        self.oscad_obj = scad.hull(*spheres)
 
+def is_small_face(face, limit):
+    shortest = None
+    for ii in range(len(face) - 1):
+        v = face[ii + 1] - face[ii]
+        l = np.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
+        if shortest is None or l < shortest:
+            shortest = l
+
+    return shortest < limit
 
 class Faces():
     """
@@ -509,15 +518,19 @@ class Faces():
         self.faceMetrics = []
 
         for desc in self.faces:
-            fm = FaceMetrics()
             face = self.get_points(desc)
+            if is_small_face(face, 4):
+                continue
+            print("face", face.format())
 
+            fm = FaceMetrics()
             # Get the normal to the plane of the face
             fm.normal = vector_axis(unit(face[2] - face[1]), unit(face[0] - face[1]))
 
             # Then calculate the x and y rotation angles to rotate the face flat on the XY plane
             a = -np.asin(-fm.normal[1])
-            b =  np.asin( fm.normal[0] / np.cos(a)) if np.fabs(a) != np.pi / 2 else 0
+            f = constrain(fm.normal[0] / np.cos(a), -1, 1)
+            b =  np.asin(f) if np.fabs(a) != np.pi / 2 else 0
             if fm.normal[2] < 0:
                 b = np.pi - b
             b = -b
@@ -527,13 +540,13 @@ class Faces():
             # The face is 'mostly' normalized, but it still has a XYZ offsets.  Merge
             # the Z offset into the transformation matrix
             z_off           = float(normalized_face[0][2])
-            bound_lo = [0, 0]
-            bound_hi = [0, 0]
+            bound_lo = copy.deepcopy(normalized_face[0])
+            bound_hi = copy.deepcopy(normalized_face[0])
             for point in normalized_face:
-                if point[0] < bound_lo[0]: bound_lo[0] = point[0]
-                if point[1] < bound_lo[1]: bound_lo[1] = point[1]
-                if point[0] > bound_hi[0]: bound_hi[0] = point[0]
-                if point[1] > bound_hi[1]: bound_hi[1] = point[1]
+                if point[0] < bound_lo[0]: bound_lo[0] = float(point[0])
+                if point[1] < bound_lo[1]: bound_lo[1] = float(point[1])
+                if point[0] > bound_hi[0]: bound_hi[0] = float(point[0])
+                if point[1] > bound_hi[1]: bound_hi[1] = float(point[1])
             fm.size = [bound_hi[0] - bound_lo[0], bound_hi[1] - bound_lo[1]]
 
             toXY[0][3]      = -(bound_lo[0] + fm.size[0] / 2)
@@ -607,6 +620,7 @@ class Faces():
         nearest         = 0
         for fm in self.faceMetrics:
             angle           = vector_angle(fm.normal, vec)
+            print("nearest", angle, fm.normal.format(), vec.format())
             if angle < nearest_angle:
                 nearest         = ii
                 nearest_angle   = angle
@@ -642,89 +656,17 @@ class Faces():
             start, stop, step = key.indices(len(self.faceMetrics))
             return [self.face(ii) for ii in range(start, stop, step)]
 
+# Note to self.  The prisnoid mesh looks to have a lot of concentric triangles.
+# I don't know why hull would do this, but look into simplifying... somehow...
 
-#xx = cyl(r=20, l=110, ends=EdgeTreatment(round=-15))
-#print("cyl mesh", xx.mesh())
-#xx.up(20).show()
-#xx.translate([1, 2, 4]).show()
-#print(xx.list())
-#polygon(xx.deaffine().list()).show()
-
-#c1 = cube(10, center=True)
-#c1_origin = c1.origin
-#c2 = c1.rotate([0, 0, 0]).translate([0, 0, 0])
-#c2_origin = c2.origin
-
-#c1_mesh = c1.mesh()
-#c2_mesh = c2.mesh()
-
-#mo_2 = Matrix(affine=True, val=c2_origin)
-#c1_points = Points(c1_mesh[0]).affine()
-#tp = c1_points * mo_2.adjugate()
-#print("c1 orig", c1_origin)
-#print("mo_2", mo_2)
-#print("c2 mesh", c2_mesh[0])
-#print("tp", tp.list())
-
-#c0 = cube(5, center=True)
-#c0.back_center = translate(c0.origin, [0, 2.5, 0])
-#c1 = cube(10, center=True)
-#c1.bot_center = translate(c1.origin, [0, 0, -5])
-#c2 = cube(30, center=True)
-#c2.top_center = translate(c2.origin, [0, 0, 15])
-#c2.front_center = translate(c2.origin, [0, -15, 0])
-#c2 |= c1.align(c2.top_center, c1.bot_center)
-#c2 |= c0.align(c2.front_center, c0.back_center)
-#c2.rotate([0, 45, 0]).show()
-
+pris1 = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55]);
+#cyl1 = cylinder(r=20, l=110, ends=EdgeTreatment(round=-15))
 c1 = cube(10)
 print("c1 origin", c1.origin)
+#c2 = cube(5)
 
-#print("orig", c1.origin)
-#print("origin trans", c1.rotate([90, 0, 0]).translate([8, 0, 0]).origin)
-#c1 = c1.rotate([-45, -10, -30])
-#c1.show()
-#m1 = c1.mesh()
-#faces = Faces(c1)
-#x = faces.nearest(rt())
-#print("xnearest", x)
-#nf = 0
-#for face in faces:
-    #print("nf!!!!!", nf)
-    #print("face", face)
-    #print("poly", faces.polygon(face))
-    #print("area", faces.area(face))
-    #print("bound", faces.bound(face))
-    #print("axis", faces.axis(face))
-    #lc = faces.axis(face, nf)
-    #if lc is not None:
-    #    c1 |= lc
-    #nf += 1
-
-#faces = c1.faces()
-#face  = faces[TP];
-#print("face", face)
-#print("orig", face.metrics.origin.list())
-
-c2 = cube(5)
-#c2 = cube(5).attach(c1, FT).show()
-#c2.attach(c1, RT).show()
-#c2 = c2.oscad_obj.align(face.metrics.origin.list())
-#c2.show()
-
-c1 |= c2.attach(c1, TP)
-c1.show()
-
-#c1 = cube(10, center=True)
-#c1.bot_center = translate(c1.origin, [0, 0, -5])
-#c2 = cube(30, center=True)
-#c2.top_center = translate(c2.origin, [0, 0, 15])
-#c2 |= c1.align(c2.top_center, c1.bot_center)
-
-#c1.show()
-#c2.show()
-#c3 = c2
-#u = c2 | c3.translate([60, 0, 0])
-#u.show()
-#h = hull(c2)
-#h.show()
+u1 = pris1 | c1.attach(pris1, RT)
+#xx = c1.attach(pris1, RT)
+ff = Faces(pris1)
+#pris1.show()
+u1.show()

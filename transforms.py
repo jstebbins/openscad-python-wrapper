@@ -180,8 +180,22 @@ class Matrix():
             self.matrix = np.append(self.matrix, val, axis=0)
 
     def round(self):
-        self.matrix = self.matrix.round(5)
+        self.matrix = self.matrix.round(6)
         return self
+
+    def format(self):
+        twoD = True if isinstance(self.matrix[0], np.ndarray) else False
+        res = "[\n  " if twoD else "[ "
+        for ii in range(len(self.matrix)):
+            if twoD:
+                for jj in range(len(self.matrix[0])):
+                    res += f"{self.matrix[ii][jj]:10.2f} "
+            else:
+                res += f"{self.matrix[ii]:10.2f} "
+            if twoD:
+                res += "\n  "
+        res += "]"
+        return res
 
     def expand(self, cols, rows=None, ones=False):
         nrows = len(self.matrix)
@@ -509,6 +523,10 @@ def vector_axis(v1, v2):
         w3 = Vector(UP)
     else:
         w3 = Vector(RT)
+    res = unit(cross3d(w1, w3))
+    if np.fabs(res[0]) > 1000:
+        print("w1", w1)
+        print("w3", w3)
     return unit(cross3d(w1, w3))
 
 def vector_angle(v1, v2):
