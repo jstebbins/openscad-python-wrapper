@@ -57,14 +57,8 @@ class Affine():
              ]
         return Matrix(m, affine=True)
 
-    def adj_trans3d(v):
-        return Affine.trans3d(v).adjugate()
-
     def trans2d(v):
         return Affine.trans3d(v).reduce(2, 2)
-
-    def adj_trans2d(v):
-        return Affine.trans2d(v).adjugate()
 
     def scale3d(v=[1, 1, 1]):
         v = vec(v, 3)
@@ -76,14 +70,8 @@ class Affine():
             ]
         return Matrix(m, affine=True)
 
-    def adj_scale3d(v):
-        return Affine.scale3d(v).adjugate()
-
     def scale2d(v):
         return Affine.scale3d(v).reduce(2, 2)
-
-    def adj_scale2d(v):
-        return Affine.scale2d(v).adjugate()
 
     def xrot3d(a=0):
         sina = np.sin(a)
@@ -96,9 +84,6 @@ class Affine():
             ]
         return Matrix(m, affine=True)
 
-    def adj_xrot3d(a):
-        return Affine.xrot3d(a).adjugate()
-
     def yrot3d(a=0):
         sina = np.sin(a)
         cosa = np.cos(a)
@@ -109,9 +94,6 @@ class Affine():
                 [     0,     0,     0,     1 ] 
             ]
         return Matrix(m, affine=True)
-
-    def adj_yrot3d(a):
-        return Affine.yrot3d(a).adjugate()
 
     def zrot3d(a=0):
         sina = np.sin(a)
@@ -124,8 +106,8 @@ class Affine():
             ]
         return Matrix(m, affine=True)
 
-    def adj_zrot3d(a):
-        return Affine.zrot3d(a).adjugate()
+    def rot3d(v=[0,0,0]):
+        return xrot3d(v[0]) @ yrot3d(v[1]) @ zrot3d(v[2])
 
     def rot3d_from_to(fr, to):
         fr  = unit(point3d(fr))
@@ -144,14 +126,8 @@ class Affine():
         ]
         return Matrix(m, affine=True)
 
-    def adj_rot3d_from_to(fr, to):
-        return Affine.rot3d_from_to(fr, to).adjugate()
-
     def rot2d(a):
         return Affine.zrot3d(a).reduce(2, 2)
-
-    def adj_rot2d(a):
-        return Affine.rot2d(a).adjugate()
 
 
 class Matrix():

@@ -51,7 +51,7 @@ def tup(val, dim, fill=None):
     """
 
     if val is None: return None
-    if is_tup(val):
+    if is_vec(val):
         l = len(val)
         fill = val[l-1] if fill is None else fill
         return tuple(val[ii] if ii < l else fill for ii in range(dim))
@@ -70,7 +70,7 @@ def lst(val, dim, fill=None):
     """
 
     if val is None: return None
-    if is_tup(val):
+    if is_vec(val):
         l = len(val)
         fill = val[l-1] if fill is None else fill
         return tuple(val[ii] if ii < l else fill for ii in range(dim))
@@ -231,6 +231,7 @@ class FaceMetrics():
     objects relative to another object's face.
     """
 
+    index  : int    = 0     # This element's index into the FaceMetrics list 
     normal : Vector = None  # A unit vector perpendicular to the face.
     matrix : Matrix = None  # Transform matrix maping coordinates onto a face.
                             # 'matrix' will transform points to be relative to the center
@@ -247,24 +248,6 @@ class FaceMetrics():
     size   : list   = None  # the size of the face, used for filtering out small faces
                             # The size is defined by a square bounding box that contains all face points
 
-@dataclass()
-class Face():
-    """
-    The points defining an object face and the calculated metrics of the face.
-    """
-
-    points  : Points        = None
-    metrics : FaceMetrics   = None
-
-@dataclass()
-class Attachment():
-    """
-    Data needed to rebase attachments if a parent object changes position or orientation
-    """
-
-    parent_face : Face      = None
-    child       : ...       = None
-
 class Object():
     """
     Base class for all OpenSCAD objects. This allows adding features that are "missing"
@@ -276,12 +259,14 @@ class Object():
     subclass from.  I have hacked around this with some '__getattr__' magic.
     """
 
-    def __init__(self, oscad_obj=None):
+    def __init__(self, object=None):
         self.name           = "Base"
-        self.oscad_obj      = oscad_obj
+        self.oscad_obj      = None
         self.face_cache     = None
-        self.attachments    = []
-        self.parent         = None
+        if object is not None:
+            self.name           = object.name
+            self.oscad_obj      = object.oscad_obj
+            self.face_cache     = object.face_cache
 
     def __getattr__(self, attr):
         """
@@ -292,13 +277,13 @@ class Object():
                 appear to have any base class to subclass off of.
         """
 
-        if hasattr(self.getobj(), attr):
-            if callable(getattr(self.getobj(), attr)):
+        if hasattr(self.oscad_obj, attr):
+            if callable(getattr(self.oscad_obj, attr)):
                 def redirect(*args, **kwargs):
-                    return getattr(self.getobj(), attr)(*args, **kwargs)
+                    return getattr(self.oscad_obj, attr)(*args, **kwargs)
                 return(redirect)
             else:
-                return getattr(self.getobj(), attr)
+                return getattr(self.oscad_obj, attr)
         else:
             assert False, f"Object '{self.name}' has no attribute '{attr}'"
 
@@ -319,48 +304,80 @@ class Object():
         Unfortunately, there does not appear to be a catch-all method of handling
         operator overload like there is for method attributes
         """
-        return Object(self.oscad_obj - other.oscad_obj)
+        res = Object(self)
+        res.oscad_obj -= other.oscad_obj
+        res.name = f"{self.name} - ({other.name})"
+        return res
     def __add__(self, other):
-        return Object(self.oscad_obj + other.oscad_obj)
+        res = Object(self)
+        res.oscad_obj += other.oscad_obj
+        res.name = f"{self.name} + ({other.name})"
+        return res
     def __or__(self, other):
-        return Object(self.oscad_obj | other.oscad_obj)
-    def __ror__(self, other):
-        return Object(self.oscad_obj | other.oscad_obj)
+        res = Object(self)
+        res.oscad_obj |= other.oscad_obj
+        res.name = f"{self.name} | ({other.name})"
+        return res
 
     """
     TODO: Create object modifiers to allow different visualizations
           E.g. Wireframe, ghost, etc
     """
-    def getobj(self):
-        return self.oscad_obj
+    def wireframe(self):
+        mesh = self.oscad_obj.mesh()
+        wf = Object()
+        wf.name = f"{self.name} - Wireframe"
+        for face in mesh[1]:
+            final = prev = face[0]
+            for pt in face[1:]:
+                self.line(mesh[0][prev], mesh[0][pt])
+                prev = pt
+            wf.line(mesh[0][prev], mesh[0][final])
+        return wf
+
+    def translate(self, v):
+        res = Object(self)
+
+        # v may be a Vector, make it compatible with OpenSCAD
+        res.oscad_obj = res.oscad_obj.translate(list(v))
+
+        m = Affine.trans3d(v)
+        # Update face_cache[].FaceMetrics.origin to the new position
+        if res.face_cache is not None:
+            for metrics in res.face_cache.faceMetrics:
+                metrics.origin = m @ metrics.origin
+
+        return res
+
+    def rotate(self, v):
+        res = Object(self)
+
+        # v may be a Vector, make it compatible with OpenSCAD
+        res.oscad_obj = res.oscad_obj.rotate(list(v))
+
+        m = Affine.rot3d(v)
+        # Update face_cache[].FaceMetrics.origin to the new position
+        if res.face_cache is not None:
+            for metrics in res.face_cache.faceMetrics:
+                metrics.origin = m @ metrics.origin
+
+        return res
 
     def up(self, val):
         """
         Aliases for "translate"
         """
-        o = Object(self)
-        o.oscad_obj = self.oscad_obj.translate(up(val))
-        return o
+        return self.translate(up(val))
     def down(self, val):
-        o = Object(self)
-        o.oscad_obj = self.oscad_obj.translate(dn(val))
-        return o
+        return self.translate(dn(val))
     def left(self, val):
-        o = Object(self)
-        o.oscad_obj = self.oscad_obj.translate(lt(val))
-        return o
+        return self.translate(lt(val))
     def right(self, val):
-        o = Object(self)
-        o.oscad_obj = self.oscad_obj.translate(rt(val))
-        return o
+        return self.translate(rt(val))
     def fwd(self, val):
-        o = Object(self)
-        o.oscad_obj = self.oscad_obj.translate(ft(val))
-        return o
+        return self.translate(ft(val))
     def back(self, val):
-        o = Object(self)
-        o.oscad_obj = self.oscad_obj.translate(bk(val))
-        return o
+        return self.translate(bk(val))
 
     def faces(self):
         """
@@ -374,6 +391,7 @@ class Object():
     def attach(self, parent, face):
         """
         Called on child object to attach to a parent at the position specifiec by face
+
         parent      - The parent object being linked to
         face        - A reference to a 'face' of the parent. This can be a face retrieved from
                       class Faces, or it can be a vector specifying the direction to use to find a face.
@@ -381,20 +399,14 @@ class Object():
                       closest match to 'rt()' (i.e. the right face).
         """
 
-        parent_faces    = parent.faces()
-        parent_face     = parent_faces[face];
-        obj = Object(self.getobj().align(parent_face.metrics.origin.list()))
-        parent.register_child(Attachment(parent_face=parent_face, child=obj))
+        parent_faces        = parent.faces()
+        parent_face_index   = parent_faces.find_face(face);
+        parent_faceMetrics  = parent_faces.faceMetrics[parent_face_index];
+
+        obj = Object(self)
+        obj.oscad_obj = self.oscad_obj.align(parent_faceMetrics.origin.list())
 
         return obj
-
-    def register_child(self, attachment):
-        """
-        Register attached children.  If the position or orientation of parent is changed after
-        attachments are made, child origins need to be recomputed.
-        """
-        if attachment not in self.attachments:
-            self.attachments.append(attachment)
 
 class cube(Object):
     """
@@ -517,13 +529,17 @@ class Faces():
         self.faces  = mesh[1]
         self.faceMetrics = []
 
+        ii = 0
         for desc in self.faces:
             face = self.get_points(desc)
             if is_small_face(face, 4):
                 continue
-            print("face", face.format())
 
             fm = FaceMetrics()
+
+            # Add a reference to self in the face list to simplify 'Faces.find_face()'
+            fm.index = ii
+
             # Get the normal to the plane of the face
             fm.normal = vector_axis(unit(face[2] - face[1]), unit(face[0] - face[1]))
 
@@ -578,6 +594,7 @@ class Faces():
             fm.area = np.fabs(sum / 2)
 
             self.faceMetrics.append(fm)
+            ii += 1
 
     def get_points(self, desc):
         """
@@ -594,17 +611,6 @@ class Faces():
         else:
             assert False, f"Invalid reference type for face points {type(desc)}"
 
-    def face(self, idx):
-        """
-        Retrieve a 'Face'
-
-        idx - Index into the mesh's list of faces
-        """
-
-        face = Face(points = Points([self.points[pt] for pt in self.faces[idx]], affine=self.points.is_affine),
-                  metrics = self.faceMetrics[idx])
-        return face
-
     def nearest(self, vec):
         """
         Retrieve the 'Face' who's 'normal' is the closest match to a given vector.
@@ -620,13 +626,12 @@ class Faces():
         nearest         = 0
         for fm in self.faceMetrics:
             angle           = vector_angle(fm.normal, vec)
-            print("nearest", angle, fm.normal.format(), vec.format())
             if angle < nearest_angle:
                 nearest         = ii
                 nearest_angle   = angle
             ii += 1
 
-        return self.face(nearest)
+        return nearest
 
     def __len__(self):
         """
@@ -635,38 +640,26 @@ class Faces():
 
         return len(self.faces)
 
-    def __getitem__(self, key):
-        """
-        Retrieves a 'Face' given a key. The key can be an integer, a slice, or a Vector.
-
-        if the key is an integer, the Nth face in the mesh's face list is returned.
-        if the key is a slice, a slice of 'Face's is returned.
-        If the key is a Vector the face whose 'normal' is the closest match to the vector is returned.
-
-        key - A reference to a 'Face' or list of 'Face's
-        """
-
-        if isinstance(key, Face):
-            return key
+    def find_face(self, key):
         if isinstance(key, Vector):
             return self.nearest(key)
         if isinstance(key, int):
-            return self.face(key)
-        elif isinstance(key, slice):
-            start, stop, step = key.indices(len(self.faceMetrics))
-            return [self.face(ii) for ii in range(start, stop, step)]
+            return key
+        if isinstance(key, Face):
+            return key.index
 
 # Note to self.  The prisnoid mesh looks to have a lot of concentric triangles.
 # I don't know why hull would do this, but look into simplifying... somehow...
 
-pris1 = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55]);
 #cyl1 = cylinder(r=20, l=110, ends=EdgeTreatment(round=-15))
-c1 = cube(10)
-print("c1 origin", c1.origin)
-#c2 = cube(5)
+#print("c1 origin", c1.origin)
 
-u1 = pris1 | c1.attach(pris1, RT)
-#xx = c1.attach(pris1, RT)
-ff = Faces(pris1)
-#pris1.show()
-u1.show()
+c = cube(10, center=True)
+#pris1 = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
+pris1 = cube(20)
+c1 = c.attach(pris1, RT)
+u1 = c1 | pris1
+pris2 = pris1.back(200)
+u2 = pris2 | c.attach(pris2, RT)
+#u2 = pris1.back(200) | c1.attach(pris1, RT)
+u2.show()
