@@ -530,6 +530,8 @@ def law_of_sines(a, A, b=None, B=None):
 def polar_to_xy(r, theta):
     return [ r * np.cos(theta), r * np.sin(theta) ]
 
+def xyz_to_spherical(v):
+    return [ norm(v), np.atan2(v.y, v.x), np.atan2(norm([v.x, v.y]), v.z) ]
 
 def segs(r):
     """

@@ -7,8 +7,8 @@ from dataclasses import dataclass
 import copy
 
 fn = None
-fa = 10
-fs = 10
+fa = 5
+fs = 5
 
 prof_start = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
 prof_last  = prof_start
@@ -224,6 +224,27 @@ def cyl_path(r, l, ends=None):
 
     return Points.concat_init([pre, bot, top, post])
 
+
+def extrude_from_to(obj, pt1, pt2):
+    pt1 = point3d(pt1)
+    pt2 = point3d(pt2)
+    rtp = xyz_to_spherical(pt2 - pt1)
+    h   = float(rtp[0])
+    ay  = np.degrees(float(rtp[2]))
+    az  = np.degrees(float(rtp[1]))
+    obj = obj.linear_extrude(height=h, center=False).rotate([0, ay, az]).translate(pt1.list())
+    return obj
+
+
+def line(pt1, pt2, d=0.5):
+    circle = scad.circle(d=d)
+    return extrude_from_to(circle, pt1, pt2)
+
+#c = scad.circle(d=2)
+#e = c.linear_extrude(height=10)
+#e.show()
+
+
 @dataclass()
 class FaceMetrics():
     """
@@ -327,12 +348,14 @@ class Object():
         mesh = self.oscad_obj.mesh()
         wf = Object()
         wf.name = f"{self.name} - Wireframe"
+
         for face in mesh[1]:
             final = prev = face[0]
             for pt in face[1:]:
-                self.line(mesh[0][prev], mesh[0][pt])
+                wf.oscad_obj |= line(mesh[0][prev], mesh[0][pt])
                 prev = pt
-            wf.line(mesh[0][prev], mesh[0][final])
+            wf.oscad_obj |= line(mesh[0][prev], mesh[0][final])
+
         return wf
 
     def translate(self, v):
@@ -654,12 +677,20 @@ class Faces():
 #cyl1 = cylinder(r=20, l=110, ends=EdgeTreatment(round=-15))
 #print("c1 origin", c1.origin)
 
-c = cube(10, center=True)
+#c = cube(10, center=True)
 #pris1 = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
-pris1 = cube(20)
-c1 = c.attach(pris1, RT)
-u1 = c1 | pris1
-pris2 = pris1.back(200)
-u2 = pris2 | c.attach(pris2, RT)
+#pris1 = cube(20)
+#c1 = c.attach(pris1, RT)
+#u1 = c1 | pris1
+#pris2 = pris1.back(200)
+#u2 = pris2 | c.attach(pris2, RT)
 #u2 = pris1.back(200) | c1.attach(pris1, RT)
-u2.show()
+#u2.show()
+
+#c = scad.circle(d=2)
+#e = c.linear_extrude(height=10)
+#e.show()
+
+#c = cube(30).wireframe()
+c = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55]).wireframe()
+c.show()
