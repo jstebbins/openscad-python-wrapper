@@ -2,9 +2,9 @@ import openscad as scad
 from transforms import *
 from collections import namedtuple
 import time
-import inspect
 from dataclasses import dataclass
 import copy
+import functools
 
 fn = None
 fa = 5
@@ -340,21 +340,88 @@ class Object():
         res.name = f"{self.name} | ({other.name})"
         return res
 
-    """
-    TODO: Create object modifiers to allow different visualizations
-          E.g. Wireframe, ghost, etc
-    """
-    def wireframe(self):
-        mesh = self.oscad_obj.mesh()
-        wf = Object()
-        wf.name = f"{self.name} - Wireframe"
+    def point_cmp(pt1, pt2):
+        """
+        Compare 2 points
 
+        Helper function for decimate_mesh()
+        """
+        if pt1 == pt2: return 0
+        if pt1[0] < pt2[0]: return -1
+        if pt1[0] > pt2[0]: return  1
+        if pt1[1] < pt2[1]: return -1
+        if pt1[1] > pt2[1]: return  1
+        if pt1[2] < pt2[2]: return -1
+        if pt1[2] > pt2[2]: return  1
+
+    def segment_cmp(seg1, seg2):
+        """
+        Compare 2 segments
+
+        Helper function for decimate_mesh()
+        """
+        c_0_0 = Object.point_cmp(seg1[0], seg2[0])
+        if c_0_0 == 0:
+            # Segments have a common vertex
+            return Object.point_cmp(seg1[1], seg2[1])
+        return c_0_0
+
+    def orient_seg(self, seg):
+        """
+        Orient a segment in a uniform direction
+
+        Helper function for decimate_mesh()
+        """
+        if Object.point_cmp(seg[0], seg[1]) > 0:
+            seg[0], seg[1] = seg[1], seg[0]
+        return seg
+
+    def decimate_mesh(self, mesh):
+        """
+        Create a list of segments (2 points connected by an edge)
+
+        The segments are all oriended in a predictable manner to
+        make sorting easier.
+        """
+        segments = []
         for face in mesh[1]:
             final = prev = face[0]
             for pt in face[1:]:
-                wf.oscad_obj |= line(mesh[0][prev], mesh[0][pt])
+                segment = [mesh[0][prev], mesh[0][pt]]
+                segments.append(self.orient_seg(segment))
                 prev = pt
-            wf.oscad_obj |= line(mesh[0][prev], mesh[0][final])
+            segment = [mesh[0][prev], mesh[0][final]]
+            segments.append(self.orient_seg(segment))
+
+        # Sort the segments (left to right, front to back, bottom to top)
+        segments.sort(key=functools.cmp_to_key(Object.segment_cmp))
+
+        # Remove duplicate segments from the list
+        prev = segments[0]
+        for segment in segments[1:]:
+            if segment == prev:
+                segments.remove(prev)
+            prev = segment
+        return segments
+
+    def wireframe(self):
+        """
+        Create a wireframe visualization of the Object
+
+        OpenSCAD has a tendency to crash when the wireframe detail gets too high.
+        I have improved it's robustness and speed some by eliminating duplicate
+        edges from the mesh. But I still experience crashes if fn, fs, fa are too
+        small with an Object that has lots of detail.
+        """
+
+        mesh = self.oscad_obj.mesh()
+        segments = self.decimate_mesh(mesh)
+
+        wf = Object()
+        wf.name = f"{self.name} - Wireframe"
+
+        for segment in segments:
+            wf.oscad_obj |= line(segment[0], segment[1])
 
         return wf
 
