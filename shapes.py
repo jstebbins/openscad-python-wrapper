@@ -166,14 +166,14 @@ def cyl_path(r, l, ends=None):
         e = ends[0]
         if e.chamf is not None:
             chang0 = radians(e.chang) if e.chang is not None else RAD_45 + np.sign(e.chamf) * vang
-            chamf0 = (e.chamf, 
+            chamf0 = (e.chamf,
                       np.fabs(law_of_sines(a=e.chamf, A=RAD_180 - chang0 - (RAD_90 - np.sign(e.chamf) * vang), B=chang0)))
         if e.round is not None:
             roundx0 = e.round / np.tan(RAD_45 - vang) if e.round >= 0 else e.round / np.tan(RAD_45 + vang)
         e = ends[1]
         if e.chamf is not None:
             chang1 = radians(e.chang) if e.chang is not None else RAD_45 - np.sign(e.chamf) * vang
-            chamf1 = (e.chamf, 
+            chamf1 = (e.chamf,
                       np.fabs(law_of_sines(a=e.chamf, A=RAD_180 - chang1 - (RAD_90 + np.sign(e.chamf) * vang), B=chang1)))
         if e.round is not None:
             roundx1 = e.round / np.tan(RAD_45 + vang) if e.round >= 0 else e.round / np.tan(RAD_45 - vang)
@@ -183,19 +183,19 @@ def cyl_path(r, l, ends=None):
     if ends is None:
         bot = Points(val=[r[0], -l / 2]).affine()
     elif ends[0].round is not None:
-        bot = arc(r=np.fabs(ends[0].round), 
-                  corner=[ 
-                            [r[0] - 2 * roundx0,    -l / 2], 
-                            [r[0],                  -l / 2], 
-                            [r[1],                   l / 2] 
+        bot = arc(r=np.fabs(ends[0].round),
+                  corner=[
+                            [r[0] - 2 * roundx0,    -l / 2],
+                            [r[0],                  -l / 2],
+                            [r[1],                   l / 2]
                          ]
         )
     elif ends[0].chamf is not None:
         d = polar_to_xy(chamf0[1], RAD_90 + vang)
         bot = Points(
-            val = [ 
-                [r[0] - chamf0[0],  -l / 2], 
-                [r[0] + d[0],       -l / 2 + d[1]] 
+            val = [
+                [r[0] - chamf0[0],  -l / 2],
+                [r[0] + d[0],       -l / 2 + d[1]]
               ]
         ).affine()
     else:
@@ -204,19 +204,19 @@ def cyl_path(r, l, ends=None):
     if ends is None:
         top = Points(val=[r[1], l / 2]).affine()
     elif ends[1].round is not None:
-        top = arc(r=np.fabs(ends[1].round), 
-                  corner=[ 
+        top = arc(r=np.fabs(ends[1].round),
+                  corner=[
                             [r[0],                  -l / 2],
-                            [r[1],                   l / 2], 
-                            [r[1] - 2 * roundx1,     l / 2], 
+                            [r[1],                   l / 2],
+                            [r[1] - 2 * roundx1,     l / 2],
                          ]
         )
     elif ends[1].chamf is not None:
         d = polar_to_xy(chamf1[1], RAD_270 + vang)
         top = Points(
-            val = [ 
+            val = [
                 [r[1] + d[0],       l / 2 + d[1]],
-                [r[1] - chamf1[0],  l / 2], 
+                [r[1] - chamf1[0],  l / 2],
               ]
         ).affine()
     else:
@@ -236,14 +236,23 @@ def extrude_from_to(obj, pt1, pt2):
     return obj
 
 
-def line(pt1, pt2, d=0.5):
+def line(pt1, pt2, d=1):
     circle = scad.circle(d=d)
     return extrude_from_to(circle, pt1, pt2)
 
-#c = scad.circle(d=2)
-#e = c.linear_extrude(height=10)
-#e.show()
-
+def mesh_edges(mesh):
+    edges = []
+    for face in mesh[1]:
+        face_edges = []
+        final = prev = face[0]
+        for pt in face[1:]:
+            edge = [mesh[0][prev], mesh[0][pt]]
+            face_edges.append(edge)
+            prev = pt
+        edge = [mesh[0][prev], mesh[0][final]]
+        face_edges.append(edge)
+        edges.append(face_edges)
+    return edges
 
 @dataclass()
 class FaceMetrics():
@@ -252,7 +261,7 @@ class FaceMetrics():
     objects relative to another object's face.
     """
 
-    index  : int    = 0     # This element's index into the FaceMetrics list 
+    index  : int    = 0     # This element's index into the FaceMetrics list
     normal : Vector = None  # A unit vector perpendicular to the face.
     matrix : Matrix = None  # Transform matrix maping coordinates onto a face.
                             # 'matrix' will transform points to be relative to the center
@@ -272,8 +281,8 @@ class FaceMetrics():
 class Object():
     """
     Base class for all OpenSCAD objects. This allows adding features that are "missing"
-    from the openscad module. I put "missing" in quotes because TBH, for most of these 
-    features it is probably better to implement them in Python code rather than native. 
+    from the openscad module. I put "missing" in quotes because TBH, for most of these
+    features it is probably better to implement them in Python code rather than native.
     So far, I have found that the foundation supplied by the openscad module it enough.
 
     It would be nice however if the openscad module supplied a base class that I could
@@ -354,55 +363,49 @@ class Object():
         if pt1[2] < pt2[2]: return -1
         if pt1[2] > pt2[2]: return  1
 
-    def segment_cmp(seg1, seg2):
+    def edge_cmp(edge1, edge2):
         """
-        Compare 2 segments
+        Compare 2 edges
 
         Helper function for decimate_mesh()
         """
-        c_0_0 = Object.point_cmp(seg1[0], seg2[0])
+        c_0_0 = Object.point_cmp(edge1[0], edge2[0])
         if c_0_0 == 0:
-            # Segments have a common vertex
-            return Object.point_cmp(seg1[1], seg2[1])
+            # edges have a common vertex
+            return Object.point_cmp(edge1[1], edge2[1])
         return c_0_0
 
-    def orient_seg(self, seg):
+    def orient_edge(self, edge):
         """
-        Orient a segment in a uniform direction
+        Orient a edge in a uniform direction
 
         Helper function for decimate_mesh()
         """
-        if Object.point_cmp(seg[0], seg[1]) > 0:
-            seg[0], seg[1] = seg[1], seg[0]
-        return seg
+        if Object.point_cmp(edge[0], edge[1]) > 0:
+            edge[0], edge[1] = edge[1], edge[0]
+        return edge
 
     def decimate_mesh(self, mesh):
         """
-        Create a list of segments (2 points connected by an edge)
+        Create a list of edges (2 points connected by an edge)
 
-        The segments are all oriended in a predictable manner to
+        The edges are all oriended in a predictable manner to
         make sorting easier.
         """
-        segments = []
-        for face in mesh[1]:
-            final = prev = face[0]
-            for pt in face[1:]:
-                segment = [mesh[0][prev], mesh[0][pt]]
-                segments.append(self.orient_seg(segment))
-                prev = pt
-            segment = [mesh[0][prev], mesh[0][final]]
-            segments.append(self.orient_seg(segment))
 
-        # Sort the segments (left to right, front to back, bottom to top)
-        segments.sort(key=functools.cmp_to_key(Object.segment_cmp))
+        face_edges = mesh_edges(mesh)
+        edges = [self.orient_edge(edge) for face in face_edges for edge in face]
 
-        # Remove duplicate segments from the list
-        prev = segments[0]
-        for segment in segments[1:]:
-            if segment == prev:
-                segments.remove(prev)
-            prev = segment
-        return segments
+        # Sort the edges (left to right, front to back, bottom to top)
+        edges.sort(key=functools.cmp_to_key(Object.edge_cmp))
+
+        # Remove duplicate edges from the list
+        prev = edges[0]
+        for edge in edges[1:]:
+            if edge == prev:
+                edges.remove(prev)
+            prev = edge
+        return edges
 
     def wireframe(self):
         """
@@ -411,17 +414,17 @@ class Object():
         OpenSCAD has a tendency to crash when the wireframe detail gets too high.
         I have improved it's robustness and speed some by eliminating duplicate
         edges from the mesh. But I still experience crashes if fn, fs, fa are too
-        small with an Object that has lots of detail.
+        fine with an Object that has lots of detail.
         """
 
         mesh = self.oscad_obj.mesh()
-        segments = self.decimate_mesh(mesh)
+        edges = self.decimate_mesh(mesh)
 
         wf = Object()
         wf.name = f"{self.name} - Wireframe"
 
-        for segment in segments:
-            wf.oscad_obj |= line(segment[0], segment[1])
+        for edge in edges:
+            wf.oscad_obj |= line(edge[0], edge[1])
 
         return wf
 
@@ -469,6 +472,14 @@ class Object():
     def back(self, val):
         return self.translate(bk(val))
 
+    """
+    TODO: Add named hooks that can be used for attachments.
+          Hooks will be specific attachment points that can be added at any time.
+          These are most useful when subclassing an Object. During __init__ you
+          add hooks for where attachments are to be made to the object. Then every
+          instance of the subclass will have these named hooks.
+    """
+
     def faces(self):
         """
         Computes face attributes on demand and caches the results
@@ -500,7 +511,7 @@ class Object():
 
 class cube(Object):
     """
-    Subclass of 'Ojbect'. 
+    Subclass of 'Ojbect'.
 
     So far, just your standard everyday cube. Cubes are useful test objects, so this is one of my
     first object overloads.
@@ -520,7 +531,7 @@ class cube(Object):
 
 class cylinder(Object):
     """
-    Subclass of 'Object'. 
+    Subclass of 'Object'.
 
     The cylinder supports 'EndTreatments' that allow inside and outside chamfering and rounding.
 
@@ -545,9 +556,9 @@ class prisnoid(Object):
     is defined by a sphere which may be of differeing radii. So all edges are rounded and edge
     roundness tapers from one corner sphere radius to the next.
 
-    size1   - [width, depth] size of the bottom of the prisnoid. 
+    size1   - [width, depth] size of the bottom of the prisnoid.
               May be a scaler in which case width and depth are the same
-    size2   - [width, depth] size of the top of the prisnoid. 
+    size2   - [width, depth] size of the top of the prisnoid.
               May be a scaler in which case width and depth are the same
     round1  - Tuple specifying the radius of the spheres of the bottom of the prisnoid.
               Order of the tuple starts with back right (+X+Y) and goes counter-clockwise.
@@ -582,7 +593,7 @@ class prisnoid(Object):
         )
         spheres = (tuple(scad.sphere(rnd1[ii]).translate(bot_corners[ii]) for ii in range(4)) +
                    tuple(scad.sphere(rnd2[ii]).translate(top_corners[ii]) for ii in range(4)))
-    
+
         self.oscad_obj = scad.hull(*spheres)
 
 def is_small_face(face, limit):
@@ -659,7 +670,7 @@ class Faces():
             toXY[1][3]      = -(bound_lo[1] + fm.size[1] / 2)
             toXY[2][3]      = -z_off
 
-            # matrix is a transformation matrix that is used to map attached objects 
+            # matrix is a transformation matrix that is used to map attached objects
             # onto faces. First the 'origin' of the object the face belongs to is applied
             # to the attaching object, then matrix is applied.
             fm.matrix       = toXY.inv()
@@ -685,6 +696,100 @@ class Faces():
 
             self.faceMetrics.append(fm)
             ii += 1
+
+    def get_normals(self):
+        normals = []
+        for face in self.faces:
+            points = self.get_points(face)
+            normal = vector_axis(unit(points[2] - points[1]), unit(points[0] - points[1]))
+            normals.append(normal)
+        return normals
+
+    def unify_faces(self, mesh):
+        edges = []
+        for ii in range(len(self.faces)):
+            face = self.faces[ii]
+            prev = final = face[0]
+            for pt in face[1:]:
+                edges.append([[np.fmin(prev, pt), np.fmax(prev, pt)], ii])
+            edges.append([[np.fmin(prev, final), np.fmax(prev, final)], ii])
+
+        normals = self.get_normals()
+        faces_mask = [ii for ii in range(len(faces))]
+        new_faces = faces
+        new_faces = self.combine_faces(faces, faces_mask, edges, normals, 0)
+        return new_faces
+
+    def search_edges(self, edge, edges, curface, faces_mask, normals):
+        matches = []
+        for candidate in edges:
+            if (edge == cadidate[0] and candidate[1] != curface and
+                candidate[1] in faces_mask and normals[candidate[1]] @ normals[curface] > (1 - eps)):
+                matches.append(candidate[1])
+        return matches
+
+    def neighbors(self, faces, curface, edges, faces_mask, normals):
+        face = faces[curface]
+        neighbors = []
+        for ii in range(len(face)):
+            prev = final = face[0]
+            for pt in face[1:]:
+                edge = [np.fmin(prev, pt), np.fmax(prev, pt)]
+                matches = self.search_edges(edge, edges, curface)
+                neighbors.append([match, ii] for match in matches if match not in neighbors)
+            edge = [np.fmin(prev, final), np.fmax(prev, final)]
+            matches = self.search_edges(edge, edges, curface)
+            neighbors.append([match, prev] for match in matches if match not in neighbors)
+
+    def find_point(pt, face):
+        for ii in range(len(face)):
+            if pt == face[ii]:
+                return ii
+        return -1
+
+    def merge_face(self, faces, curface, neighbors):
+        face = faces[curface]
+        new_face = []
+        for ii in range(len(face)):
+            neighbor = list(filter(lambda n: n[1] == ii, neighbors))
+            assert len(neighbor) <= 1, f"Unexpected number of neighbors to an edge {len(neighbor)}"
+            if len(neighbor) == 0:
+                new_face.append(face[ii])
+            else:
+                neighbor_face = faces[neighbor[0]]
+                ind = neighbor_face.index(face[ii])  # an exception will be raised if not found!
+                assert ind >= 0, f"Expected to find point {face[ii]} in neighbor face {neighbor[0]}"
+                stop = face[ii+1] if ii + 1 < len(face) else face[0]
+                stop_ind = neighbor_face.index(stop) # an exception will be raised if not found!
+                while ind != stop_ind:
+                    new_face.append(neighbor_face[ind])
+                    ind = ind + 1 if ind + 1 < len(face) else 0
+        return new_face
+
+
+    def combine_faces(self, faces, faces_mask, edges, normals, curface):
+
+        ii = 0
+        deleted = []
+        while curface < len(faces):
+            if curface in deleted:
+                curface += 1
+                continue
+            face        = faces[curface]
+            neighbors   = self.neighbors(faces, curface, edges, faces_mask, normals)
+            if len(neighbors > 0):
+                # As long as we find new neighbors to merged faces, we reprocess the same face
+                new_face = self.merge_face(faces, curface, neighbors)
+                faces[curface] = new_face
+                deleted.append(n[0] for n in neighbors)
+            else:
+                curface += 1
+            ii += 1
+            assert ii < 100, f"Loops seems to be infinite!"
+        # Remove the deleted faces
+        for d in deleted:
+            del faces[d]
+        return faces
 
     def get_points(self, desc):
         """
