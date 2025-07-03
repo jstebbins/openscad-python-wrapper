@@ -1,6 +1,5 @@
 import openscad as scad
 from transforms import *
-from collections import namedtuple
 import time
 from dataclasses import dataclass
 import copy
@@ -235,7 +234,6 @@ def extrude_from_to(obj, pt1, pt2):
     obj = obj.linear_extrude(height=h, center=False).rotate([0, ay, az]).translate(pt1.list())
     return obj
 
-
 def line(pt1, pt2, d=1):
     circle = scad.circle(d=d)
     return extrude_from_to(circle, pt1, pt2)
@@ -309,7 +307,6 @@ class Object():
         Note:   I would have done this with subclassing.  But python openscad does not
                 appear to have any base class to subclass off of.
         """
-        print(f"__getattr__ {attr}")
         if hasattr(self.oscad_obj, attr):
             if callable(getattr(self.oscad_obj, attr)):
                 def redirect(*args, **kwargs):
@@ -530,16 +527,19 @@ class cube(Object):
         self.oscad_obj = scad.cube(size, center)
 
         """
-        A couple examples of a named attachment hook.  I will do more later...
+        Some examples of a named attachment hook.
         """
-        offset = size[2] / 2 if center else 0
-        front = Affine.xrot3d(np.radians(90)) @ Affine.trans3d([0, 0, offset])
-        self.attachment_hook("front", front)
-
-        offset = size[2] / 2 if center else size[2]
-        back = Affine.xrot3d(np.radians(-90)) @ Affine.trans3d([0, 0, offset])
-        self.attachment_hook("back", back)
-
+        hook_defs = [
+            ["front", [ 90,   0, 0], size[1] / 2 if center else 0],
+            ["back",  [-90,   0, 0], size[1] / 2 if center else size[1]],
+            ["right", [  0,  90, 0], size[0] / 2 if center else size[0]],
+            ["left",  [  0, -90, 0], size[0] / 2 if center else 0],
+            ["top",   [  0,   0, 0], size[2] / 2 if center else size[2]],
+            ["bottom",[180,   0, 0], size[2] / 2 if center else 0],
+        ]
+        for hook in hook_defs:
+            m = Affine.rot3d(np.radians(hook[1])) @ Affine.trans3d([0, 0, hook[2]])
+            self.attachment_hook(hook[0], m)
 
 class cylinder(Object):
     """
@@ -885,9 +885,8 @@ class Faces():
 
 
 c = cube(10, center=True)
-print("c hooks", c.hooks)
 c1 = cube(20, center=True).right(30)
-c2 = c.attach(c1, "front")
+c2 = c.attach(c1, "bottom")
 u1 = c1 | c2
 u1.show()
 #print(c.origin)

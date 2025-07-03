@@ -107,7 +107,7 @@ class Affine():
         return Matrix(m, affine=True)
 
     def rot3d(v=[0,0,0]):
-        return xrot3d(v[0]) @ yrot3d(v[1]) @ zrot3d(v[2])
+        return Affine.xrot3d(v[0]) @ Affine.yrot3d(v[1]) @ Affine.zrot3d(v[2])
 
     def rot3d_from_to(fr, to):
         fr  = unit(point3d(fr))
