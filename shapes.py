@@ -262,18 +262,9 @@ class FaceMetrics():
     """
 
     index  : int    = 0     # This element's index into the FaceMetrics list
-    normal : Vector = None  # A unit vector perpendicular to the face.
     matrix : Matrix = None  # Transform matrix maping coordinates onto a face.
                             # 'matrix' will transform points to be relative to the center
                             # point of the face with the face 'normal' as the positive Z-axis.
-    origin : Matrix = None  # Transform matrix mapping coordinates onto a face.
-                            # 'origin' will transform points to be relative to the object
-                            # the face is a part of with the face 'normal' as the positive Z-axis.
-                            # 'origin' is appropriate to use with 'align()' to position objects
-                            # relative to an object's face.
-                            # !!Warining: 'origin' must be recalculated if the face's object's
-                            #             position or orientation is changed after computing
-                            #             FaceMetrics
     area   : float  = None  # The area of the face, used for filtering out small faces
     size   : list   = None  # the size of the face, used for filtering out small faces
                             # The size is defined by a square bounding box that contains all face points
@@ -298,6 +289,16 @@ class Object():
             self.oscad_obj      = object.oscad_obj
             self.face_cache     = object.face_cache
 
+    def __setattr__(self, attr, value):
+        """
+        The 'origin' attribute of OpenSCAD objects is writable, but writing to it
+        does not change the origin of the object.  So prevent any misunderstandings
+        by making it read-only
+        """
+        if attr == "origin":
+            raise AttributeError(f"Read-only attribute '{attr}'")
+        super().__setattr__(attr, value)
+
     def __getattr__(self, attr):
         """
         Pass any attribute references that haven't been defined by me down to OpenSCAD
@@ -306,7 +307,7 @@ class Object():
         Note:   I would have done this with subclassing.  But python openscad does not
                 appear to have any base class to subclass off of.
         """
-
+        print(f"__getattr__ {attr}")
         if hasattr(self.oscad_obj, attr):
             if callable(getattr(self.oscad_obj, attr)):
                 def redirect(*args, **kwargs):
@@ -434,12 +435,6 @@ class Object():
         # v may be a Vector, make it compatible with OpenSCAD
         res.oscad_obj = res.oscad_obj.translate(list(v))
 
-        m = Affine.trans3d(v)
-        # Update face_cache[].FaceMetrics.origin to the new position
-        if res.face_cache is not None:
-            for metrics in res.face_cache.faceMetrics:
-                metrics.origin = m @ metrics.origin
-
         return res
 
     def rotate(self, v):
@@ -447,12 +442,6 @@ class Object():
 
         # v may be a Vector, make it compatible with OpenSCAD
         res.oscad_obj = res.oscad_obj.rotate(list(v))
-
-        m = Affine.rot3d(v)
-        # Update face_cache[].FaceMetrics.origin to the new position
-        if res.face_cache is not None:
-            for metrics in res.face_cache.faceMetrics:
-                metrics.origin = m @ metrics.origin
 
         return res
 
@@ -504,8 +493,10 @@ class Object():
         parent_face_index   = parent_faces.find_face(face);
         parent_faceMetrics  = parent_faces.faceMetrics[parent_face_index];
 
+        origin  = Matrix(parent.oscad_obj.origin, affine=True) @ parent_faceMetrics.matrix
+
         obj = Object(self)
-        obj.oscad_obj = self.oscad_obj.align(parent_faceMetrics.origin.list())
+        obj.oscad_obj = self.oscad_obj.align(origin.list())
 
         return obj
 
@@ -563,7 +554,7 @@ class polyhedron(Object):
         self.name       = "Polyhedron"
         self.points     = Points(points);
         self.faces      = faces
-        self.oscad_obj  = scad.polyhedron(points=self.points.list(), faces=faces)
+        self.oscad_obj  = scad.polyhedron(points=self.points.deaffine().list(), faces=faces)
 
 class prisnoid(Object):
     """
@@ -639,17 +630,19 @@ class Faces():
         self.origin = Matrix(affine=True, val=object.origin)
         self.i_origin = self.origin.inv()
 
-        # Normalize the input object. I.e. reverse any transforms that have been applied
         mesh = object.mesh()
+
         # Remap object points to be relative to [0, 0, 0] with no rotation
         # I want all values *except* FaceMetrics.origin to be independent of the objects
         # current position and orientation.
-        self.points = self.i_origin @ Points(mesh[0])
-        self.faces  = mesh[1]
-        self.faceMetrics = []
-        self.unified_faces = self.unify_faces(self.faces)
+        self.points         = self.i_origin @ Points(mesh[0])
+        self.normals        = self.get_normals(mesh[1])
 
-        ii = 0
+        # Unify adjacent triangles that share a common normal
+        self.faces, self.nromals = self.unify_faces(mesh[1], self.normals)
+        self.faceMetrics    = []
+
+        face_ii = 0
         for desc in self.faces:
             face = self.get_points(desc)
             if is_small_face(face, 4):
@@ -658,16 +651,16 @@ class Faces():
             fm = FaceMetrics()
 
             # Add a reference to self in the face list to simplify 'Faces.find_face()'
-            fm.index = ii
+            fm.index = face_ii
 
             # Get the normal to the plane of the face
-            fm.normal = vector_axis(unit(face[2] - face[1]), unit(face[0] - face[1]))
+            normal = self.normals[face_ii]
 
             # Then calculate the x and y rotation angles to rotate the face flat on the XY plane
-            a = -np.asin(-fm.normal[1])
-            f = constrain(fm.normal[0] / np.cos(a), -1, 1)
+            a = -np.asin(-normal[1])
+            f = constrain(normal[0] / np.cos(a), -1, 1)
             b =  np.asin(f) if np.fabs(a) != np.pi / 2 else 0
-            if fm.normal[2] < 0:
+            if normal[2] < 0:
                 b = np.pi - b
             b = -b
             toXY = Affine.xrot3d(a) @ Affine.yrot3d(b)
@@ -694,11 +687,6 @@ class Faces():
             # to the attaching object, then matrix is applied.
             fm.matrix       = toXY.inv()
 
-            # The face 'origin' is a transformation matrix that will map attaching object onto
-            # the face in one go.  This must be updated if the parent object's position or orientation
-            # is changed after these face metrics have been calculated.
-            fm.origin       = fm.matrix @ self.origin
-
             # Put the face on the XY plane so we can do some calculations more easily
             normalized_face = toXY @ face
 
@@ -714,7 +702,7 @@ class Faces():
             fm.area = np.fabs(sum / 2)
 
             self.faceMetrics.append(fm)
-            ii += 1
+            face_ii += 1
 
     def get_normals(self, faces):
         normals = []
@@ -724,7 +712,7 @@ class Faces():
             normals.append(normal)
         return normals
 
-    def unify_faces(self, faces):
+    def unify_faces(self, faces, normals):
         edges = []
         for ii in range(len(faces)):
             face = faces[ii]
@@ -735,9 +723,29 @@ class Faces():
                 prev = pt
             edges.append([[int(np.fmin(prev, final)), int(np.fmax(prev, final))], ii])
 
-        normals = self.get_normals(faces)
-        new_faces = self.combine_faces(faces, edges, normals, 0)
-        return new_faces
+        ii = 0
+        curface = 0
+        deleted = []
+        while curface < len(faces):
+            if curface in deleted:
+                curface += 1
+                continue
+            face        = faces[curface]
+            neighbors   = self.neighbors(faces, curface, edges, deleted, normals)
+            if len(neighbors) > 0:
+                # As long as we find new neighbors to merged faces, we reprocess the same face
+                new_face = self.merge_face(faces, curface, neighbors)
+                faces[curface] = new_face
+                deleted.extend([n[0] for n in neighbors])
+            else:
+                curface += 1
+            ii += 1
+            assert ii < 10000, f"Loop seems to be infinite!"
+
+        # Remove the deleted faces
+        faces   = [faces[ii]   for ii in range(len(faces)) if ii not in deleted]
+        normals = [normals[ii] for ii in range(len(faces)) if ii not in deleted]
+        return faces, normals
 
     def search_edges(self, edge, edges, curface, deleted, normals):
         matches = []
@@ -798,28 +806,6 @@ class Faces():
         return new_face
 
 
-    def combine_faces(self, faces, edges, normals, curface):
-
-        ii = 0
-        deleted = []
-        while curface < len(faces):
-            if curface in deleted:
-                curface += 1
-                continue
-            face        = faces[curface]
-            neighbors   = self.neighbors(faces, curface, edges, deleted, normals)
-            if len(neighbors) > 0:
-                # As long as we find new neighbors to merged faces, we reprocess the same face
-                new_face = self.merge_face(faces, curface, neighbors)
-                faces[curface] = new_face
-                deleted.extend([n[0] for n in neighbors])
-            else:
-                curface += 1
-            ii += 1
-            assert ii < 1000, f"Loops seems to be infinite!"
-        # Remove the deleted faces
-        faces = [faces[ii] for ii in range(len(faces)) if ii not in deleted]
-        return faces
 
     def get_points(self, desc):
         """
@@ -849,8 +835,8 @@ class Faces():
         ii = 0
         nearest_angle   = tau
         nearest         = 0
-        for fm in self.faceMetrics:
-            angle           = vector_angle(fm.normal, vec)
+        for normal in self.normals:
+            angle           = vector_angle(normal, vec)
             if angle < nearest_angle:
                 nearest         = ii
                 nearest_angle   = angle
@@ -876,26 +862,12 @@ class Faces():
 # Note to self.  The prisnoid mesh looks to have a lot of concentric triangles.
 # I don't know why hull would do this, but look into simplifying... somehow...
 
-#cyl1 = cylinder(r=20, l=110, ends=EdgeTreatment(round=-15))
-#print("c1 origin", c1.origin)
 
-#c = cube(10, center=True)
-#pris1 = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
-#pris1 = cube(20)
-#c1 = c.attach(pris1, RT)
-#u1 = c1 | pris1
-#pris2 = pris1.back(200)
-#u2 = pris2 | c.attach(pris2, RT)
-#u2 = pris1.back(200) | c1.attach(pris1, RT)
-#u2.show()
+c = cube(10, center=True)
+#c1 = cube(20).right(30)
+#c2 = c.attach(c1, RT)
+#u1 = c1 | c2
+#u1.show()
+#print(c.origin)
+#print(c.oscad_obj.origin)
 
-#c = scad.circle(d=2)
-#e = c.linear_extrude(height=10)
-#e.show()
-
-#c = cube(30).wireframe()
-c = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
-mesh = c.oscad_obj.mesh()
-p = polyhedron(mesh[0], mesh[1]).translate([100, 0, 0])
-faces = c.faces()
-#c.show()
