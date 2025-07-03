@@ -284,10 +284,12 @@ class Object():
         self.name           = "Base"
         self.oscad_obj      = None
         self.face_cache     = None
+        self.hooks          = dict()
         if object is not None:
             self.name           = object.name
             self.oscad_obj      = object.oscad_obj
             self.face_cache     = object.face_cache
+            self.hooks          = object.hooks
 
     def __setattr__(self, attr, value):
         """
@@ -469,6 +471,16 @@ class Object():
           instance of the subclass will have these named hooks.
     """
 
+    def attachment_hook(self, name, matrix):
+        """
+        Add named hooks that can be used for attachments.
+        Hooks are specific attachment points that can be added at any time.
+        These are most useful when subclassing an Object. During __init__ you
+        add hooks for where attachments are to be made to the object. Then every
+        instance of the subclass will have these named hooks.
+        """
+        self.hooks[name] = matrix
+
     def faces(self):
         """
         Computes face attributes on demand and caches the results
@@ -478,7 +490,7 @@ class Object():
             self.face_cache = Faces(self)
         return self.face_cache
 
-    def attach(self, parent, face):
+    def attach(self, parent, where):
         """
         Called on child object to attach to a parent at the position specifiec by face
 
@@ -489,11 +501,15 @@ class Object():
                       closest match to 'rt()' (i.e. the right face).
         """
 
-        parent_faces        = parent.faces()
-        parent_face_index   = parent_faces.find_face(face);
-        parent_faceMetrics  = parent_faces.faceMetrics[parent_face_index];
+        if isinstance(where, str):
+            m = parent.hooks[where]
+        else:
+            parent_faces        = parent.faces()
+            parent_face_index   = parent_faces.find_face(where);
+            parent_faceMetrics  = parent_faces.faceMetrics[parent_face_index];
+            m = parent_faceMetrics.matrix
 
-        origin  = Matrix(parent.oscad_obj.origin, affine=True) @ parent_faceMetrics.matrix
+        origin  = Matrix(parent.oscad_obj.origin, affine=True) @ m
 
         obj = Object(self)
         obj.oscad_obj = self.oscad_obj.align(origin.list())
@@ -518,6 +534,17 @@ class cube(Object):
         self.name = "Cube"
         size = lst(size, 3)
         self.oscad_obj = scad.cube(size, center)
+
+        """
+        A couple example of a named attachment hook.  I will do more later...
+        """
+        offset = size[2] / 2 if center else 0
+        front = Affine.xrot3d(np.radians(90)) @ Affine.trans3d([0, 0, offset])
+        self.attachment_hook("front", front)
+
+        offset = size[2] / 2 if center else size[2]
+        back = Affine.xrot3d(np.radians(-90)) @ Affine.trans3d([0, 0, offset])
+        self.attachment_hook("back", back)
 
 
 class cylinder(Object):
@@ -864,10 +891,11 @@ class Faces():
 
 
 c = cube(10, center=True)
-#c1 = cube(20).right(30)
-#c2 = c.attach(c1, RT)
-#u1 = c1 | c2
-#u1.show()
+print("c hooks", c.hooks)
+c1 = cube(20, center=True).right(30)
+c2 = c.attach(c1, "front")
+u1 = c1 | c2
+u1.show()
 #print(c.origin)
 #print(c.oscad_obj.origin)
 
