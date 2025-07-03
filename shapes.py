@@ -7,8 +7,8 @@ import copy
 import functools
 
 fn = None
-fa = 5
-fs = 5
+fa = 10
+fs = 10
 
 prof_start = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
 prof_last  = prof_start
@@ -547,6 +547,24 @@ class cylinder(Object):
         cpath           = cyl_path(r, l, ends)
         self.oscad_obj  = scad.polygon(cpath.deaffine().list()).rotate_extrude()
 
+class polyhedron(Object):
+    """
+    Subclass of 'Object'.
+
+    Wrapper for OpesSCAD polyhedron
+
+    points  - List of [x, y, z] points
+    faces   - List of lists. Each sublist are indicies into points which make up a face
+    """
+
+    def __init__(self, points, faces):
+        super().__init__()
+
+        self.name       = "Polyhedron"
+        self.points     = Points(points);
+        self.faces      = faces
+        self.oscad_obj  = scad.polyhedron(points=self.points.list(), faces=faces)
+
 class prisnoid(Object):
     """
     Subclass of 'Object'
@@ -629,6 +647,7 @@ class Faces():
         self.points = self.i_origin @ Points(mesh[0])
         self.faces  = mesh[1]
         self.faceMetrics = []
+        self.unified_faces = self.unify_faces(self.faces)
 
         ii = 0
         for desc in self.faces:
@@ -697,49 +716,55 @@ class Faces():
             self.faceMetrics.append(fm)
             ii += 1
 
-    def get_normals(self):
+    def get_normals(self, faces):
         normals = []
-        for face in self.faces:
+        for face in faces:
             points = self.get_points(face)
             normal = vector_axis(unit(points[2] - points[1]), unit(points[0] - points[1]))
             normals.append(normal)
         return normals
 
-    def unify_faces(self, mesh):
+    def unify_faces(self, faces):
         edges = []
-        for ii in range(len(self.faces)):
-            face = self.faces[ii]
+        for ii in range(len(faces)):
+            face = faces[ii]
+            face_edges = []
             prev = final = face[0]
             for pt in face[1:]:
-                edges.append([[np.fmin(prev, pt), np.fmax(prev, pt)], ii])
-            edges.append([[np.fmin(prev, final), np.fmax(prev, final)], ii])
+                edges.append([[int(np.fmin(prev, pt)), int(np.fmax(prev, pt))], ii])
+                prev = pt
+            edges.append([[int(np.fmin(prev, final)), int(np.fmax(prev, final))], ii])
 
-        normals = self.get_normals()
-        faces_mask = [ii for ii in range(len(faces))]
-        new_faces = faces
-        new_faces = self.combine_faces(faces, faces_mask, edges, normals, 0)
+        normals = self.get_normals(faces)
+        new_faces = self.combine_faces(faces, edges, normals, 0)
         return new_faces
 
-    def search_edges(self, edge, edges, curface, faces_mask, normals):
+    def search_edges(self, edge, edges, curface, deleted, normals):
         matches = []
         for candidate in edges:
-            if (edge == cadidate[0] and candidate[1] != curface and
-                candidate[1] in faces_mask and normals[candidate[1]] @ normals[curface] > (1 - eps)):
+            if (edge == candidate[0] and candidate[1] != curface and
+                candidate[1] not in deleted and normals[candidate[1]] @ normals[curface] > (1 - eps)):
                 matches.append(candidate[1])
         return matches
 
-    def neighbors(self, faces, curface, edges, faces_mask, normals):
+    def neighbors(self, faces, curface, edges, deleted, normals):
         face = faces[curface]
         neighbors = []
-        for ii in range(len(face)):
-            prev = final = face[0]
-            for pt in face[1:]:
-                edge = [np.fmin(prev, pt), np.fmax(prev, pt)]
-                matches = self.search_edges(edge, edges, curface)
-                neighbors.append([match, ii] for match in matches if match not in neighbors)
-            edge = [np.fmin(prev, final), np.fmax(prev, final)]
-            matches = self.search_edges(edge, edges, curface)
-            neighbors.append([match, prev] for match in matches if match not in neighbors)
+
+        prev = final = face[0]
+        for ii in range(1, len(face)):
+            pt = face[ii]
+            ind = ii - 1
+            edge = [np.fmin(prev, pt), np.fmax(prev, pt)]
+            matches = self.search_edges(edge, edges, curface, deleted, normals)
+            neighbors.extend([[match, ind] for match in matches if match not in neighbors])
+            prev = pt
+        ind = len(face) - 1
+        edge = [np.fmin(prev, final), np.fmax(prev, final)]
+        matches = self.search_edges(edge, edges, curface, deleted, normals)
+        neighbors.extend([[match, ind] for match in matches if match not in neighbors])
+
+        return neighbors
 
     def find_point(pt, face):
         for ii in range(len(face)):
@@ -750,12 +775,18 @@ class Faces():
     def merge_face(self, faces, curface, neighbors):
         face = faces[curface]
         new_face = []
+        showme = False
         for ii in range(len(face)):
             neighbor = list(filter(lambda n: n[1] == ii, neighbors))
             assert len(neighbor) <= 1, f"Unexpected number of neighbors to an edge {len(neighbor)}"
             if len(neighbor) == 0:
                 new_face.append(face[ii])
             else:
+                neighbor = neighbor[0]
+                if neighbor[0] == 49:
+                    showme = True
+                else:
+                    showme = False
                 neighbor_face = faces[neighbor[0]]
                 ind = neighbor_face.index(face[ii])  # an exception will be raised if not found!
                 assert ind >= 0, f"Expected to find point {face[ii]} in neighbor face {neighbor[0]}"
@@ -763,11 +794,11 @@ class Faces():
                 stop_ind = neighbor_face.index(stop) # an exception will be raised if not found!
                 while ind != stop_ind:
                     new_face.append(neighbor_face[ind])
-                    ind = ind + 1 if ind + 1 < len(face) else 0
+                    ind = ind + 1 if ind + 1 < len(neighbor_face) else 0
         return new_face
 
 
-    def combine_faces(self, faces, faces_mask, edges, normals, curface):
+    def combine_faces(self, faces, edges, normals, curface):
 
         ii = 0
         deleted = []
@@ -776,19 +807,18 @@ class Faces():
                 curface += 1
                 continue
             face        = faces[curface]
-            neighbors   = self.neighbors(faces, curface, edges, faces_mask, normals)
-            if len(neighbors > 0):
+            neighbors   = self.neighbors(faces, curface, edges, deleted, normals)
+            if len(neighbors) > 0:
                 # As long as we find new neighbors to merged faces, we reprocess the same face
                 new_face = self.merge_face(faces, curface, neighbors)
                 faces[curface] = new_face
-                deleted.append(n[0] for n in neighbors)
+                deleted.extend([n[0] for n in neighbors])
             else:
                 curface += 1
             ii += 1
-            assert ii < 100, f"Loops seems to be infinite!"
+            assert ii < 1000, f"Loops seems to be infinite!"
         # Remove the deleted faces
-        for d in deleted:
-            del faces[d]
+        faces = [faces[ii] for ii in range(len(faces)) if ii not in deleted]
         return faces
 
     def get_points(self, desc):
@@ -864,5 +894,8 @@ class Faces():
 #e.show()
 
 #c = cube(30).wireframe()
-c = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55]).wireframe()
-c.show()
+c = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
+mesh = c.oscad_obj.mesh()
+p = polyhedron(mesh[0], mesh[1]).translate([100, 0, 0])
+faces = c.faces()
+#c.show()
