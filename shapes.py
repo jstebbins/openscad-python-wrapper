@@ -274,7 +274,7 @@ class Object():
     Base class for all OpenSCAD objects. This allows adding features that are "missing"
     from the openscad module. I put "missing" in quotes because TBH, for most of these
     features it is probably better to implement them in Python code rather than native.
-    So far, I have found that the foundation supplied by the openscad module it enough.
+    So far, I have found that the foundation supplied by the openscad module is enough.
 
     It would be nice however if the openscad module supplied a base class that I could
     subclass from.  I have hacked around this with some '__getattr__' magic.
@@ -463,14 +463,6 @@ class Object():
     def back(self, val):
         return self.translate(bk(val))
 
-    """
-    TODO: Add named hooks that can be used for attachments.
-          Hooks will be specific attachment points that can be added at any time.
-          These are most useful when subclassing an Object. During __init__ you
-          add hooks for where attachments are to be made to the object. Then every
-          instance of the subclass will have these named hooks.
-    """
-
     def attachment_hook(self, name, matrix):
         """
         Add named hooks that can be used for attachments.
@@ -518,10 +510,12 @@ class Object():
 
 class cube(Object):
     """
-    Subclass of 'Ojbect'.
+    A Cube
 
     So far, just your standard everyday cube. Cubes are useful test objects, so this is one of my
     first object overloads.
+
+    Has example attachment hooks.
 
     size    - [width, depth, height]. If passed a scaler, width, depth, and height are all the same value
     center  - Centers the cube on the current origin. Else the cube is positioned with it's bottom-front-left
@@ -536,7 +530,7 @@ class cube(Object):
         self.oscad_obj = scad.cube(size, center)
 
         """
-        A couple example of a named attachment hook.  I will do more later...
+        A couple examples of a named attachment hook.  I will do more later...
         """
         offset = size[2] / 2 if center else 0
         front = Affine.xrot3d(np.radians(90)) @ Affine.trans3d([0, 0, offset])
@@ -549,7 +543,7 @@ class cube(Object):
 
 class cylinder(Object):
     """
-    Subclass of 'Object'.
+    A cylinder with additional features
 
     The cylinder supports 'EndTreatments' that allow inside and outside chamfering and rounding.
 
@@ -567,12 +561,12 @@ class cylinder(Object):
 
 class polyhedron(Object):
     """
-    Subclass of 'Object'.
+    A polyhedron defined by points and faces.
 
     Wrapper for OpesSCAD polyhedron
 
     points  - List of [x, y, z] points
-    faces   - List of lists. Each sublist are indicies into points which make up a face
+    faces   - List of faces. Faces are sublists of indicies into points
     """
 
     def __init__(self, points, faces):
@@ -585,7 +579,7 @@ class polyhedron(Object):
 
 class prisnoid(Object):
     """
-    Subclass of 'Object'
+    A prismoid-like object
 
     A prisnoid is a prism like object who's top and bottom faces are parallel. The top and bottom
     faces may be of differing sizes and the top face may be offset from the center point. Each corner
