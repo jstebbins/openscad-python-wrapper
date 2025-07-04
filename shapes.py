@@ -797,7 +797,7 @@ class Faces():
             else:
                 curface += 1
             ii += 1
-            assert ii < 100000, f"Loop seems to be infinite!"
+            assert ii < 1000000, f"Loop seems to be infinite!"
 
 
         # Remove the deleted faces
@@ -941,7 +941,6 @@ class Faces():
 
 
         return new_face
-
 
     def get_points(self, desc):
         """
