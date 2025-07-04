@@ -6,12 +6,37 @@ import copy
 import functools
 
 fn = None
-fa = 10
-fs = 10
+fa = 5
+fs = 5
 
 prof_start = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
 prof_last  = prof_start
-profile = False
+prof_dict  = dict()
+profile = True
+
+@dataclass()
+class ProfAccumulate():
+    lap_start : int = None
+    ellapse   : int = None
+
+def prof_accumulate_start(key):
+    global prof_dict
+
+    if key not in prof_dict:
+        prof_dict[key] = ProfAccumulate(lap_start = time.clock_gettime_ns(time.CLOCK_MONOTONIC), ellapse = 0)
+    prof_dict[key].lap_start = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
+
+def prof_accumulate_lap(key):
+    global prof_dict
+
+    now = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
+    prof_dict[key].ellapse += now - prof_dict[key].lap_start
+
+def prof_accumulate_finish(key, msg=""):
+    global prof_dict
+
+    if not profile: return
+    print(f"{msg} - {key} ellapsed: {prof_dict[key].ellapse / (1000*1000)}ms")
 
 def prof_time(msg="", final=False):
     global prof_last
@@ -260,6 +285,7 @@ class FaceMetrics():
     """
 
     index  : int    = 0     # This element's index into the FaceMetrics list
+    normal : Vector = None  # A unit vector perpendicular to the face.
     matrix : Matrix = None  # Transform matrix maping coordinates onto a face.
                             # 'matrix' will transform points to be relative to the center
                             # point of the face with the face 'normal' as the positive Z-axis.
@@ -268,6 +294,9 @@ class FaceMetrics():
                             # The size is defined by a square bounding box that contains all face points
 
 class Object():
+    ATTACH_LARGEST = 0
+    ATTACH_NEAREST = 1
+
     """
     Base class for all OpenSCAD objects. This allows adding features that are "missing"
     from the openscad module. I put "missing" in quotes because TBH, for most of these
@@ -353,7 +382,7 @@ class Object():
         """
         Compare 2 points
 
-        Helper function for decimate_mesh()
+        Helper function for dedup_mesh()
         """
         if pt1 == pt2: return 0
         if pt1[0] < pt2[0]: return -1
@@ -367,7 +396,7 @@ class Object():
         """
         Compare 2 edges
 
-        Helper function for decimate_mesh()
+        Helper function for dedup_mesh()
         """
         c_0_0 = Object.point_cmp(edge1[0], edge2[0])
         if c_0_0 == 0:
@@ -379,13 +408,13 @@ class Object():
         """
         Orient a edge in a uniform direction
 
-        Helper function for decimate_mesh()
+        Helper function for dedup_mesh()
         """
         if Object.point_cmp(edge[0], edge[1]) > 0:
             edge[0], edge[1] = edge[1], edge[0]
         return edge
 
-    def decimate_mesh(self, mesh):
+    def dedup_mesh(self, mesh):
         """
         Create a list of edges (2 points connected by an edge)
 
@@ -418,7 +447,7 @@ class Object():
         """
 
         mesh = self.oscad_obj.mesh()
-        edges = self.decimate_mesh(mesh)
+        edges = self.dedup_mesh(mesh)
 
         wf = Object()
         wf.name = f"{self.name} - Wireframe"
@@ -479,7 +508,7 @@ class Object():
             self.face_cache = Faces(self)
         return self.face_cache
 
-    def attach(self, parent, where):
+    def attach(self, parent, where, how=ATTACH_LARGEST):
         """
         Called on child object to attach to a parent at the position specifiec by face
 
@@ -646,36 +675,39 @@ class Faces():
 
         object  - The 'Object' to process
         """
+        mesh = object.mesh()
 
         # Stash the object origin and inverse transform matrix for use with attachments
         self.origin = Matrix(affine=True, val=object.origin)
         self.i_origin = self.origin.inv()
 
-        mesh = object.mesh()
-
         # Remap object points to be relative to [0, 0, 0] with no rotation
         # I want all values *except* FaceMetrics.origin to be independent of the objects
         # current position and orientation.
         self.points         = self.i_origin @ Points(mesh[0])
-        self.normals        = self.get_normals(mesh[1])
+        self.faceMetrics    = [FaceMetrics() for _ in range(len(mesh[1]))]
+
+        self.get_normals(mesh[1], self.faceMetrics)
 
         # Unify adjacent triangles that share a common normal
-        self.faces, self.nromals = self.unify_faces(mesh[1], self.normals)
-        self.faceMetrics    = []
+        self.faces, deleted = self.unify_faces(mesh[1], self.faceMetrics)
+        self.faceMetrics = [self.faceMetrics[ii] for ii in range(len(self.faceMetrics)) if ii not in deleted]
 
+
+        '''
         face_ii = 0
         for desc in self.faces:
             face = self.get_points(desc)
             if is_small_face(face, 4):
                 continue
 
-            fm = FaceMetrics()
+            fm = self.faceMetrics[face_ii]
 
             # Add a reference to self in the face list to simplify 'Faces.find_face()'
             fm.index = face_ii
 
             # Get the normal to the plane of the face
-            normal = self.normals[face_ii]
+            normal = self.faceMetrics[face_ii].normal
 
             # Then calculate the x and y rotation angles to rotate the face flat on the XY plane
             a = -np.asin(-normal[1])
@@ -722,18 +754,19 @@ class Faces():
             sum -= normalized_face[l - 1][1] * normalized_face[0][0]
             fm.area = np.fabs(sum / 2)
 
-            self.faceMetrics.append(fm)
             face_ii += 1
+        '''
 
-    def get_normals(self, faces):
-        normals = []
-        for face in faces:
-            points = self.get_points(face)
-            normal = vector_axis(unit(points[2] - points[1]), unit(points[0] - points[1]))
-            normals.append(normal)
-        return normals
+    def get_normals(self, faces, faceMetrics):
+        for ii in range(len(faces)):
+            points = self.get_points(faces[ii])
+            faceMetrics[ii].normal = vector_axis(unit(points[2] - points[1]), unit(points[0] - points[1]))
 
-    def unify_faces(self, faces, normals):
+    def unify_faces(self, faces, faceMetrics):
+        """
+        Find adjacent faces that have the same normal vector and merge them
+        """
+
         edges = []
         for ii in range(len(faces)):
             face = faces[ii]
@@ -743,6 +776,8 @@ class Faces():
                 edges.append([[int(np.fmin(prev, pt)), int(np.fmax(prev, pt))], ii])
                 prev = pt
             edges.append([[int(np.fmin(prev, final)), int(np.fmax(prev, final))], ii])
+        # Sort the edges so we can do a *much* faster binary search
+        edges.sort(key=functools.cmp_to_key(Faces.edge_cmp))
 
         ii = 0
         curface = 0
@@ -752,7 +787,7 @@ class Faces():
                 curface += 1
                 continue
             face        = faces[curface]
-            neighbors   = self.neighbors(faces, curface, edges, deleted, normals)
+            neighbors   = self.neighbors(faces, curface, edges, deleted, faceMetrics)
             if len(neighbors) > 0:
                 # As long as we find new neighbors to merged faces, we reprocess the same face
                 new_face = self.merge_face(faces, curface, neighbors)
@@ -765,57 +800,104 @@ class Faces():
 
         # Remove the deleted faces
         faces   = [faces[ii]   for ii in range(len(faces)) if ii not in deleted]
-        normals = [normals[ii] for ii in range(len(faces)) if ii not in deleted]
-        return faces, normals
+        return faces, deleted
 
-    def search_edges(self, edge, edges, curface, deleted, normals):
+    def edge_cmp(edge1, edge2):
+        """
+        Compare 2 edges
+
+        Helper function for search_edges()
+        """
+        c_0_0 = edge1[0][0] - edge2[0][0]
+        if c_0_0 == 0:
+            # edges have a common vertex
+            return edge1[0][1] - edge2[0][1]
+        return c_0_0
+
+    def binary_search_first(edge, edges):
+        """
+        Find the first occurance of an edge in the edges list
+
+        Helper function for search_edges()
+        """
+        e   = [edge, 0]
+        low = 0
+        hi  = len(edges) - 1
+        mid = 0
+
+        while low <= hi:
+            mid = (hi + low) // 2
+
+            if  Faces.edge_cmp(edges[mid], e) < 0:
+                low = mid + 1
+            elif Faces.edge_cmp(edges[mid], e) > 0:
+                hi  = mid - 1
+            else:
+                # Equal, now find first that is equal
+                while mid > 0 and Faces.edge_cmp(edges[mid - 1], e) == 0:
+                    mid -= 1
+                return mid
+        return -1
+
+    def search_edges(self, edge, edges, curface, deleted, faceMetrics):
+        """
+        Create a list of faces that are adjacent to a given edge and have
+        the same normal vector as the current face
+
+        Helper function to unify_faces
+        """
+
         matches = []
-        for candidate in edges:
-            if (edge == candidate[0] and candidate[1] != curface and
-                candidate[1] not in deleted and normals[candidate[1]] @ normals[curface] > (1 - eps)):
+        start   = Faces.binary_search_first(edge, edges)
+        for candidate in edges[start:]:
+            if edge != candidate[0]: break
+            if (candidate[1] != curface and candidate[1] not in deleted and 
+                faceMetrics[candidate[1]].normal @ faceMetrics[curface].normal > (1 - eps)):
                 matches.append(candidate[1])
         return matches
 
-    def neighbors(self, faces, curface, edges, deleted, normals):
-        face = faces[curface]
-        neighbors = []
+    def neighbors(self, faces, curface, edges, deleted, faceMetrics):
+        """
+        Create a list of faces that are adjacent to the current face and have
+        the same normal vector as the current face
 
-        prev = final = face[0]
+        Helper function to unify_faces
+        """
+
+        face        = faces[curface]
+        neighbors   = []
+        prev        = final = face[0]
         for ii in range(1, len(face)):
             pt = face[ii]
             ind = ii - 1
             edge = [np.fmin(prev, pt), np.fmax(prev, pt)]
-            matches = self.search_edges(edge, edges, curface, deleted, normals)
+            matches = self.search_edges(edge, edges, curface, deleted, faceMetrics)
             neighbors.extend([[match, ind] for match in matches if match not in neighbors])
             prev = pt
         ind = len(face) - 1
         edge = [np.fmin(prev, final), np.fmax(prev, final)]
-        matches = self.search_edges(edge, edges, curface, deleted, normals)
+        matches = self.search_edges(edge, edges, curface, deleted, faceMetrics)
         neighbors.extend([[match, ind] for match in matches if match not in neighbors])
 
         return neighbors
 
-    def find_point(pt, face):
-        for ii in range(len(face)):
-            if pt == face[ii]:
-                return ii
-        return -1
-
     def merge_face(self, faces, curface, neighbors):
+        """
+        For each edge in the current face, merge any neighbor to that edge
+
+        Helper function to unify_faces
+        """
         face = faces[curface]
         new_face = []
-        showme = False
+        # for each edge in face, merge any neighbor to that edge
         for ii in range(len(face)):
+            # get any neighbor to edge face[ii], may not exist
             neighbor = list(filter(lambda n: n[1] == ii, neighbors))
             assert len(neighbor) <= 1, f"Unexpected number of neighbors to an edge {len(neighbor)}"
             if len(neighbor) == 0:
                 new_face.append(face[ii])
             else:
                 neighbor = neighbor[0]
-                if neighbor[0] == 49:
-                    showme = True
-                else:
-                    showme = False
                 neighbor_face = faces[neighbor[0]]
                 ind = neighbor_face.index(face[ii])  # an exception will be raised if not found!
                 assert ind >= 0, f"Expected to find point {face[ii]} in neighbor face {neighbor[0]}"
@@ -824,8 +906,8 @@ class Faces():
                 while ind != stop_ind:
                     new_face.append(neighbor_face[ind])
                     ind = ind + 1 if ind + 1 < len(neighbor_face) else 0
-        return new_face
 
+        return new_face
 
 
     def get_points(self, desc):
@@ -883,12 +965,14 @@ class Faces():
 # Note to self.  The prisnoid mesh looks to have a lot of concentric triangles.
 # I don't know why hull would do this, but look into simplifying... somehow...
 
+p = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
+p.faces()
 
-c = cube(10, center=True)
-c1 = cube(20, center=True).right(30)
-c2 = c.attach(c1, "bottom")
-u1 = c1 | c2
-u1.show()
+#c = cube(10, center=True)
+#c1 = cube(20, center=True).right(30)
+#c2 = c.attach(c1, "bottom")
+#u1 = c1 | c2
+#u1.show()
 #print(c.origin)
 #print(c.oscad_obj.origin)
 
