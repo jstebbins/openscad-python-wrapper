@@ -6,8 +6,8 @@ import copy
 import functools
 
 fn = None
-fa = 5
-fs = 5
+fa = 2
+fs = 2
 
 prof_start = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
 prof_last  = prof_start
@@ -707,69 +707,6 @@ class Faces():
         for ii in range(len(self.faceMetrics)):
             sum += self.faceMetrics[ii].area
         self.avg_area = sum / len(self.faceMetrics)
-
-        '''
-        face_ii = 0
-        for desc in self.faces:
-            face = self.get_points(desc)
-            if is_small_face(face, 4):
-                continue
-
-            fm = self.faceMetrics[face_ii]
-
-            # Add a reference to self in the face list to simplify 'Faces.find_face()'
-            fm.index = face_ii
-
-            # Get the normal to the plane of the face
-            normal = self.faceMetrics[face_ii].normal
-
-            # Then calculate the x and y rotation angles to rotate the face flat on the XY plane
-            a = -np.asin(-normal[1])
-            f = constrain(normal[0] / np.cos(a), -1, 1)
-            b =  np.asin(f) if np.fabs(a) != np.pi / 2 else 0
-            if normal[2] < 0:
-                b = np.pi - b
-            b = -b
-            toXY = Affine.xrot3d(a) @ Affine.yrot3d(b)
-            normalized_face = toXY @ face
-
-            # The face is 'mostly' normalized, but it still has a XYZ offsets.  Merge
-            # the Z offset into the transformation matrix
-            z_off           = float(normalized_face[0][2])
-            bound_lo = copy.deepcopy(normalized_face[0])
-            bound_hi = copy.deepcopy(normalized_face[0])
-            for point in normalized_face:
-                if point[0] < bound_lo[0]: bound_lo[0] = float(point[0])
-                if point[1] < bound_lo[1]: bound_lo[1] = float(point[1])
-                if point[0] > bound_hi[0]: bound_hi[0] = float(point[0])
-                if point[1] > bound_hi[1]: bound_hi[1] = float(point[1])
-            fm.size = [bound_hi[0] - bound_lo[0], bound_hi[1] - bound_lo[1]]
-
-            toXY[0][3]      = -(bound_lo[0] + fm.size[0] / 2)
-            toXY[1][3]      = -(bound_lo[1] + fm.size[1] / 2)
-            toXY[2][3]      = -z_off
-
-            # matrix is a transformation matrix that is used to map attached objects
-            # onto faces. First the 'origin' of the object the face belongs to is applied
-            # to the attaching object, then matrix is applied.
-            fm.matrix       = toXY.inv()
-
-            # Put the face on the XY plane so we can do some calculations more easily
-            normalized_face = toXY @ face
-
-            # Calculate the surface area of the face. This is used for filtering
-            # "uninteresting" faces out of the list
-            sum = 0
-            l = len(normalized_face)
-            for ii in range(l - 1):
-                sum += normalized_face[ii][0] * normalized_face[ii+1][1]
-                sum -= normalized_face[ii][1] * normalized_face[ii+1][0]
-            sum += normalized_face[l - 1][0] * normalized_face[0][1]
-            sum -= normalized_face[l - 1][1] * normalized_face[0][0]
-            fm.area = np.fabs(sum / 2)
-
-            face_ii += 1
-        '''
 
     def get_matrix(self, index):
 
