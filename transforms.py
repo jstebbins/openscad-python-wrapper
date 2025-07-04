@@ -499,10 +499,6 @@ def vector_axis(v1, v2):
         w3 = Vector(UP)
     else:
         w3 = Vector(RT)
-    res = unit(cross3d(w1, w3))
-    if np.fabs(res[0]) > 1000:
-        print("w1", w1)
-        print("w3", w3)
     return unit(cross3d(w1, w3))
 
 def vector_angle(v1, v2):

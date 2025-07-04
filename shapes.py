@@ -675,6 +675,7 @@ class Faces():
 
         object  - The 'Object' to process
         """
+
         mesh = object.mesh()
 
         # Stash the object origin and inverse transform matrix for use with attachments
@@ -692,7 +693,6 @@ class Faces():
         # Unify adjacent triangles that share a common normal
         self.faces, deleted = self.unify_faces(mesh[1], self.faceMetrics)
         self.faceMetrics = [self.faceMetrics[ii] for ii in range(len(self.faceMetrics)) if ii not in deleted]
-
 
         '''
         face_ii = 0
@@ -781,7 +781,7 @@ class Faces():
 
         ii = 0
         curface = 0
-        deleted = []
+        deleted = set()
         while curface < len(faces):
             if curface in deleted:
                 curface += 1
@@ -792,14 +792,17 @@ class Faces():
                 # As long as we find new neighbors to merged faces, we reprocess the same face
                 new_face = self.merge_face(faces, curface, neighbors)
                 faces[curface] = new_face
-                deleted.extend([n[0] for n in neighbors])
+                #deleted.update([n[0] for n in neighbors])
+                deleted.update([n.face for n in neighbors])
             else:
                 curface += 1
             ii += 1
-            assert ii < 10000, f"Loop seems to be infinite!"
+            assert ii < 100000, f"Loop seems to be infinite!"
+
 
         # Remove the deleted faces
         faces   = [faces[ii]   for ii in range(len(faces)) if ii not in deleted]
+
         return faces, deleted
 
     def edge_cmp(edge1, edge2):
@@ -820,6 +823,7 @@ class Faces():
 
         Helper function for search_edges()
         """
+
         e   = [edge, 0]
         low = 0
         hi  = len(edges) - 1
@@ -837,6 +841,7 @@ class Faces():
                 while mid > 0 and Faces.edge_cmp(edges[mid - 1], e) == 0:
                     mid -= 1
                 return mid
+
         return -1
 
     def search_edges(self, edge, edges, curface, deleted, faceMetrics):
@@ -847,14 +852,28 @@ class Faces():
         Helper function to unify_faces
         """
 
+
         matches = []
         start   = Faces.binary_search_first(edge, edges)
-        for candidate in edges[start:]:
+        for ii in range(start, len(edges)):
+            candidate = edges[ii]
             if edge != candidate[0]: break
             if (candidate[1] != curface and candidate[1] not in deleted and 
                 faceMetrics[candidate[1]].normal @ faceMetrics[curface].normal > (1 - eps)):
                 matches.append(candidate[1])
+
         return matches
+
+    class Neighbor():
+        def __init__(self, face, ind):
+            self.face   = face
+            self.ind    = ind
+
+        def __hash__(self):
+            return self.face
+
+        def __eq__(self, other):
+            return self.face == other.face
 
     def neighbors(self, faces, curface, edges, deleted, faceMetrics):
         """
@@ -865,19 +884,29 @@ class Faces():
         """
 
         face        = faces[curface]
-        neighbors   = []
+        neighbors   = set()
         prev        = final = face[0]
         for ii in range(1, len(face)):
             pt = face[ii]
             ind = ii - 1
             edge = [np.fmin(prev, pt), np.fmax(prev, pt)]
             matches = self.search_edges(edge, edges, curface, deleted, faceMetrics)
-            neighbors.extend([[match, ind] for match in matches if match not in neighbors])
+            if len(matches) > 0:
+                # One match on an edge is expected
+                match = matches[0]  # match is a neighbor face, ind an edge of the current face
+                n = Faces.Neighbor(face = match, ind = ind)
+                if n not in neighbors:
+                    neighbors.add(n)
             prev = pt
         ind = len(face) - 1
         edge = [np.fmin(prev, final), np.fmax(prev, final)]
         matches = self.search_edges(edge, edges, curface, deleted, faceMetrics)
-        neighbors.extend([[match, ind] for match in matches if match not in neighbors])
+        if len(matches) > 0:
+            # One match on an edge is expected
+            match = matches[0]  # match is a face, ind an edge of the current face
+            n = Faces.Neighbor(face = match, ind = ind)
+            if n not in neighbors:
+                neighbors.add(n)
 
         return neighbors
 
@@ -887,18 +916,21 @@ class Faces():
 
         Helper function to unify_faces
         """
+
         face = faces[curface]
         new_face = []
         # for each edge in face, merge any neighbor to that edge
         for ii in range(len(face)):
             # get any neighbor to edge face[ii], may not exist
-            neighbor = list(filter(lambda n: n[1] == ii, neighbors))
+            #neighbor = list(filter(lambda n: n[1] == ii, neighbors))
+            neighbor = list(filter(lambda n: n.ind == ii, neighbors))
             assert len(neighbor) <= 1, f"Unexpected number of neighbors to an edge {len(neighbor)}"
             if len(neighbor) == 0:
                 new_face.append(face[ii])
             else:
                 neighbor = neighbor[0]
-                neighbor_face = faces[neighbor[0]]
+                #neighbor_face = faces[neighbor[0]]
+                neighbor_face = faces[neighbor.face]
                 ind = neighbor_face.index(face[ii])  # an exception will be raised if not found!
                 assert ind >= 0, f"Expected to find point {face[ii]} in neighbor face {neighbor[0]}"
                 stop = face[ii+1] if ii + 1 < len(face) else face[0]
@@ -906,6 +938,7 @@ class Faces():
                 while ind != stop_ind:
                     new_face.append(neighbor_face[ind])
                     ind = ind + 1 if ind + 1 < len(neighbor_face) else 0
+
 
         return new_face
 
