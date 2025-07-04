@@ -294,8 +294,8 @@ class FaceMetrics():
                             # The size is defined by a square bounding box that contains all face points
 
 class Object():
-    ATTACH_LARGEST = 0
-    ATTACH_NEAREST = 1
+    ATTACH_LARGE = 0
+    ATTACH_NORM  = 1
 
     """
     Base class for all OpenSCAD objects. This allows adding features that are "missing"
@@ -473,6 +473,13 @@ class Object():
 
         return res
 
+    def color(self, c):
+        res = Object(self)
+
+        res.oscad_obj = res.oscad_obj.color(c)
+
+        return res
+
     def up(self, val):
         """
         Aliases for "translate"
@@ -508,7 +515,7 @@ class Object():
             self.face_cache = Faces(self)
         return self.face_cache
 
-    def attach(self, parent, where, how=ATTACH_LARGEST):
+    def attach(self, parent, where, how=ATTACH_LARGE):
         """
         Called on child object to attach to a parent at the position specifiec by face
 
@@ -523,9 +530,9 @@ class Object():
             m = parent.hooks[where]
         else:
             parent_faces        = parent.faces()
-            parent_face_index   = parent_faces.find_face(where);
+            parent_face_index   = parent_faces.find_face(where, how);
             parent_faceMetrics  = parent_faces.faceMetrics[parent_face_index];
-            m = parent_faceMetrics.matrix
+            m = parent_faces.get_matrix(parent_face_index)
 
         origin  = Matrix(parent.oscad_obj.origin, affine=True) @ m
 
@@ -689,10 +696,17 @@ class Faces():
         self.faceMetrics    = [FaceMetrics() for _ in range(len(mesh[1]))]
 
         self.get_normals(mesh[1], self.faceMetrics)
+        self.get_areas(mesh[1], self.faceMetrics)
+
 
         # Unify adjacent triangles that share a common normal
         self.faces, deleted = self.unify_faces(mesh[1], self.faceMetrics)
         self.faceMetrics = [self.faceMetrics[ii] for ii in range(len(self.faceMetrics)) if ii not in deleted]
+
+        sum = 0
+        for ii in range(len(self.faceMetrics)):
+            sum += self.faceMetrics[ii].area
+        self.avg_area = sum / len(self.faceMetrics)
 
         '''
         face_ii = 0
@@ -757,10 +771,64 @@ class Faces():
             face_ii += 1
         '''
 
+    def get_matrix(self, index):
+
+        face    = self.get_points(index)
+        normal  = self.faceMetrics[index].normal
+
+        # Then calculate the x and y rotation angles to rotate the face flat on the XY plane
+        a = -np.asin(-normal[1])
+        f = constrain(normal[0] / np.cos(a), -1, 1)
+        b =  np.asin(f) if np.fabs(a) != np.pi / 2 else 0
+        if normal[2] < 0:
+            b = np.pi - b
+        b = -b
+        toXY = Affine.xrot3d(a) @ Affine.yrot3d(b)
+        normalized_face = toXY @ face
+
+        # The face is 'mostly' normalized, but it still has a XYZ offsets.
+        # Merge the offsets into the transformation matrix
+        z_off    = float(normalized_face[0][2])
+        bound_lo = copy.deepcopy(normalized_face[0])
+        bound_hi = copy.deepcopy(normalized_face[0])
+        for point in normalized_face:
+            if point[0] < bound_lo[0]: bound_lo[0] = float(point[0])
+            if point[1] < bound_lo[1]: bound_lo[1] = float(point[1])
+            if point[0] > bound_hi[0]: bound_hi[0] = float(point[0])
+            if point[1] > bound_hi[1]: bound_hi[1] = float(point[1])
+
+        size        = [bound_hi[0] - bound_lo[0], bound_hi[1] - bound_lo[1]]
+
+        toXY[0][3]  = -(bound_lo[0] + size[0] / 2)
+        toXY[1][3]  = -(bound_lo[1] + size[1] / 2)
+        toXY[2][3]  = -z_off
+
+        # matrix is a transformation matrix that is used to map attached objects
+        # onto faces. First the 'origin' of the object the face belongs to must be applied
+        # to the attaching object, then matrix is applied.
+        matrix      = toXY.inv()
+
+        return matrix
+
     def get_normals(self, faces, faceMetrics):
         for ii in range(len(faces)):
             points = self.get_points(faces[ii])
             faceMetrics[ii].normal = vector_axis(unit(points[2] - points[1]), unit(points[0] - points[1]))
+
+    def get_areas(self, faces, faceMetrics):
+        for ii in range(len(faces)):
+            points = self.get_points(faces[ii])
+            s1 = np.sqrt((points[0][0] - points[1][0]) ** 2 +
+                         (points[0][1] - points[1][1]) ** 2 +
+                         (points[0][2] - points[1][2]) ** 2)
+            s2 = np.sqrt((points[1][0] - points[2][0]) ** 2 +
+                         (points[1][1] - points[2][1]) ** 2 +
+                         (points[1][2] - points[2][2]) ** 2)
+            s3 = np.sqrt((points[0][0] - points[2][0]) ** 2 +
+                         (points[0][1] - points[2][1]) ** 2 +
+                         (points[0][2] - points[2][2]) ** 2)
+            semi = (s1 + s2 + s3) / 2
+            faceMetrics[ii].area = np.sqrt(semi * (semi - s1) * (semi - s2) * (semi - s3))
 
     def unify_faces(self, faces, faceMetrics):
         """
@@ -790,15 +858,13 @@ class Faces():
             neighbors   = self.neighbors(faces, curface, edges, deleted, faceMetrics)
             if len(neighbors) > 0:
                 # As long as we find new neighbors to merged faces, we reprocess the same face
-                new_face = self.merge_face(faces, curface, neighbors)
+                new_face = self.merge_face(faces, curface, neighbors, faceMetrics)
                 faces[curface] = new_face
-                #deleted.update([n[0] for n in neighbors])
                 deleted.update([n.face for n in neighbors])
             else:
                 curface += 1
             ii += 1
             assert ii < 1000000, f"Loop seems to be infinite!"
-
 
         # Remove the deleted faces
         faces   = [faces[ii]   for ii in range(len(faces)) if ii not in deleted]
@@ -910,7 +976,7 @@ class Faces():
 
         return neighbors
 
-    def merge_face(self, faces, curface, neighbors):
+    def merge_face(self, faces, curface, neighbors, faceMetrics):
         """
         For each edge in the current face, merge any neighbor to that edge
 
@@ -922,15 +988,15 @@ class Faces():
         # for each edge in face, merge any neighbor to that edge
         for ii in range(len(face)):
             # get any neighbor to edge face[ii], may not exist
-            #neighbor = list(filter(lambda n: n[1] == ii, neighbors))
             neighbor = list(filter(lambda n: n.ind == ii, neighbors))
             assert len(neighbor) <= 1, f"Unexpected number of neighbors to an edge {len(neighbor)}"
             if len(neighbor) == 0:
                 new_face.append(face[ii])
             else:
                 neighbor = neighbor[0]
-                #neighbor_face = faces[neighbor[0]]
                 neighbor_face = faces[neighbor.face]
+                neighbor_area = faceMetrics[neighbor.face].area
+                faceMetrics[curface].area += neighbor_area
                 ind = neighbor_face.index(face[ii])  # an exception will be raised if not found!
                 assert ind >= 0, f"Expected to find point {face[ii]} in neighbor face {neighbor[0]}"
                 stop = face[ii+1] if ii + 1 < len(face) else face[0]
@@ -951,7 +1017,7 @@ class Faces():
         """
 
         if isinstance(desc, int):
-            return Points([self.points[pt] for pt in self.faces[idx]], affine=self.points.is_affine)
+            return Points([self.points[pt] for pt in self.faces[desc]], affine=self.points.is_affine)
         elif isinstance(desc, list):
             return Points([self.points[pt] for pt in desc], affine=self.points.is_affine)
         else:
@@ -979,6 +1045,31 @@ class Faces():
 
         return nearest
 
+    def large(self, vec):
+        """
+        Heuristic for selection of the "best" face who's normal points roughly in the direction
+        of a given vector.
+
+        This can be used to find the appropriate face when you wish to attach to the "front" of an
+        object and don't know what particular face that is.
+
+        vec - The vector to compare face normals with
+        """
+
+        best_angle    = tau
+        large_area    = self.faceMetrics[0].area
+        large         = 0
+        threshold     = self.avg_area * 4
+        for ii in range(len(self.faceMetrics)):
+            angle  = vector_angle(self.faceMetrics[ii].normal, vec)
+            if angle <= best_angle and (self.faceMetrics[ii].area > threshold or
+                                        self.faceMetrics[ii].area >= large_area):
+                large         = ii
+                large_area    = self.faceMetrics[ii].area
+                best_angle    = angle
+
+        return large
+
     def __len__(self):
         """
         The number of faces
@@ -986,9 +1077,12 @@ class Faces():
 
         return len(self.faces)
 
-    def find_face(self, key):
+    def find_face(self, key, how):
         if isinstance(key, Vector):
-            return self.nearest(key)
+            if how == Object.ATTACH_NORM:
+                return self.nearest(key)
+            else:
+                return self.large(key)
         if isinstance(key, int):
             return key
         if isinstance(key, Face):
@@ -998,7 +1092,12 @@ class Faces():
 # I don't know why hull would do this, but look into simplifying... somehow...
 
 p = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
-p.faces()
+c = cube(10, center=True).color("blue")
+c2 = c.attach(p, TP)
+u1 = p | c2
+u1.show()
+#c2.show()
+#p.faces()
 
 #c = cube(10, center=True)
 #c1 = cube(20, center=True).right(30)
