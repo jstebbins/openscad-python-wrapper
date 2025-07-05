@@ -5,8 +5,8 @@ import copy
 import functools
 
 fn = None
-fa = 4
-fs = 4
+fa = 2
+fs = 2
 
 RAD_90  = np.pi / 2
 RAD_45  = RAD_90 / 2
@@ -164,7 +164,7 @@ def cyl_path(r, l, ends=None):
     pre  = [[0, -l / 2]]
     post = [[0,  l / 2]]
     if ends is None:
-        bot = Points(val=[r[0], -l / 2]).affine()
+        bot = Points(val=[[r[0], -l / 2]]).affine()
     elif ends[0].round is not None:
         bot = arc(r=np.fabs(ends[0].round),
                   corner=[
@@ -185,7 +185,7 @@ def cyl_path(r, l, ends=None):
         assert False, f"Invalid end treatment specified {ends[0]}"
 
     if ends is None:
-        top = Points(val=[r[1], l / 2]).affine()
+        top = Points(val=[[r[1], l / 2]]).affine()
     elif ends[1].round is not None:
         top = arc(r=np.fabs(ends[1].round),
                   corner=[
@@ -582,12 +582,34 @@ class cylinder(Object):
     ends    - See 'EdgeTreatment'. 2-tuple if top and bottom have different end treatments
     """
 
-    def __init__(self, r, l, ends):
+    def __init__(self, r, h, ends=None, d=None):
         super().__init__()
 
+        if d is not None:
+            d           = tup(r, 2)
+            r           = [d[0] / 2, d[1] / 2]
+
+        r               = tup(r, 2)
         self.name       = "Cylinder"
-        cpath           = cyl_path(r, l, ends)
+        cpath           = cyl_path(r=r, l=h, ends=ends)
         self.oscad_obj  = scad.polygon(cpath.deaffine().list()).rotate_extrude()
+
+        r_mid = np.fmin(r[0], r[1]) + np.fabs(r[0] - r[1]) / 2
+
+        """
+        Some examples of a named attachment hook.
+        """
+        hook_defs = [
+            ["front", [ 90,   0, 0], r_mid],
+            ["back",  [-90,   0, 0], r_mid],
+            ["right", [  0,  90, 0], r_mid],
+            ["left",  [  0, -90, 0], r_mid],
+            ["top",   [  0,   0, 0], h / 2],
+            ["bottom",[180,   0, 0], h / 2],
+        ]
+        for hook in hook_defs:
+            m = Affine.rot3d(np.radians(hook[1])) @ Affine.trans3d([0, 0, hook[2]])
+            self.attachment_hook(hook[0], m)
 
 class polyhedron(Object):
     """
@@ -1041,9 +1063,10 @@ class Faces():
 
 #p = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
 #p = cube(80, center=True)
-p = sphere(d=80)
+#p = sphere(d=80)
+p = cylinder(h=100, r=[20, 10], ends=EdgeTreatment(round=5))
 c = cube(10, center=True).color("blue")
-c2 = c.attach(p, where="bottom")
+c2 = c.attach(p, where="back")
 #c2 = c.attach(p, where=RT, how=Object.ATTACH_LARGE)
 #c2 = c.attach(p, where=RT, how=Object.ATTACH_NORM)
 u1 = p | c2
