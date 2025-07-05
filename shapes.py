@@ -1091,7 +1091,7 @@ class Faces():
 
 radius = 75
 angle = np.radians(40)
-shape = Points(scad.circle(r=5, fn=50).mesh()[0])
+shape = scad.circle(r=5, fn=50).mesh()[0]
 T = [
     Affine.around_center(cp=[0, radius, 0], m=Affine.xrot3d(-angle * ii / 25)) @ 
         Affine.scale3d([1 + ii / 25, 2 - ii / 25, 1])
@@ -1099,5 +1099,5 @@ T = [
 ]
 s = sweep(shape,T)
 
-p = polyhedron(points=s[0].deaffine().list(), faces=s[1])
+p = polyhedron(points=s[0], faces=s[1])
 p.show()

@@ -47,7 +47,7 @@ def sweep(shape, transforms):
     transforms  - a list of 4x4 Affine transforms
     """
 
-    shape = shape.points3d()
+    shape = Points(shape).points3d()
     transformed_shapes = [transform @ shape for transform in transforms]
 
     return generate_faces(transformed_shapes)
