@@ -478,11 +478,23 @@ class Object():
         """
         Called on child object to attach to a parent at the position specifiec by face
 
-        parent      - The parent object being linked to
-        face        - A reference to a 'face' of the parent. This can be a face retrieved from
-                      class Faces, or it can be a vector specifying the direction to use to find a face.
-                      E.g. using the vector 'rt()' will lookup the face whose normal vector is the
-                      closest match to 'rt()' (i.e. the right face).
+        parent  - The parent object being linked to
+        where   - A reference to a 'face' of the parent. Options are:
+                    A face retrieved from class Faces
+                    A vector that will trigger a search for a face
+                    A named attachment hook
+        how     - Specifices the search algorithm to use when 'where' is a vector.
+                  Options are currently:
+                    Object.ATTACH_NORM  - selects a face whose normal vector is closest to given vector
+                    Object.ATTACH_LARGE - selects a face whose area is 1/2 std deviation larger than
+                                          the mean and whose normal points in roughly the right direction
+
+        E.g. using the vector 'RT' will lookup the face whose normal vector is the
+        "closest match" to 'RT' (i.e. the right face).
+
+        Note: Creation of face metrics that are necessary for attachments based on faces can be
+              slow when detail is high. Using named attachment hooks will result in the fastest 
+              rendering objects since they don't rely on face metrics.
         """
 
         if isinstance(where, str):
@@ -678,16 +690,6 @@ class prisnoid(Object):
 
         self.oscad_obj = scad.hull(*spheres)
 
-def is_small_face(face, limit):
-    shortest = None
-    for ii in range(len(face) - 1):
-        v = face[ii + 1] - face[ii]
-        l = np.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
-        if shortest is None or l < shortest:
-            shortest = l
-
-    return shortest < limit
-
 class Faces():
     """
     Class for dealing with faces in an 'Object' mesh.
@@ -695,6 +697,9 @@ class Faces():
     def __init__(self, object):
         """
         Creates a list of 'FaceMetrics' from the faces in an 'Object' mesh
+
+        The mesh faces are unified so that adjacent faces that share the same normal become
+        a single face. This can be slow when detail is high.
 
         object  - The 'Object' to process
         """
@@ -714,16 +719,18 @@ class Faces():
         self.get_normals(mesh[1], self.faceMetrics)
         self.get_areas(mesh[1], self.faceMetrics)
 
-
         # Unify adjacent triangles that share a common normal
         self.faces, deleted = self.unify_faces(mesh[1], self.faceMetrics)
+        # Eliminate metrics for deleted faces
         self.faceMetrics = [self.faceMetrics[ii] for ii in range(len(self.faceMetrics)) if ii not in deleted]
 
+        # Calculate the mean area of a face
         sum = 0
-        for ii in range(len(self.faceMetrics)):
-            sum += self.faceMetrics[ii].area
+        for fm in self.faceMetrics:
+            sum += fm.area
         self.mean_area = sum / len(self.faceMetrics)
 
+        # Calculate the standard deviation of face areas
         sosd = 0
         for fm in self.faceMetrics:
             sosd += (fm.area - self.mean_area) ** 2
@@ -1061,12 +1068,12 @@ class Faces():
 # Note to self.  The prisnoid mesh looks to have a lot of concentric triangles.
 # I don't know why hull would do this, but look into simplifying... somehow...
 
-#p = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
+p = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
 #p = cube(80, center=True)
 #p = sphere(d=80)
-p = cylinder(h=100, r=[20, 10], ends=EdgeTreatment(round=5))
+#p = cylinder(h=100, r=[20, 10], ends=EdgeTreatment(round=5))
 c = cube(10, center=True).color("blue")
-c2 = c.attach(p, where="back")
+c2 = c.attach(p, where=RT)
 #c2 = c.attach(p, where=RT, how=Object.ATTACH_LARGE)
 #c2 = c.attach(p, where=RT, how=Object.ATTACH_NORM)
 u1 = p | c2
