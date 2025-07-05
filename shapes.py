@@ -1,53 +1,12 @@
 import openscad as scad
 from transforms import *
-import time
 from dataclasses import dataclass
 import copy
 import functools
 
 fn = None
-fa = 2
-fs = 2
-
-prof_start = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
-prof_last  = prof_start
-prof_dict  = dict()
-profile = True
-
-@dataclass()
-class ProfAccumulate():
-    lap_start : int = None
-    ellapse   : int = None
-
-def prof_accumulate_start(key):
-    global prof_dict
-
-    if key not in prof_dict:
-        prof_dict[key] = ProfAccumulate(lap_start = time.clock_gettime_ns(time.CLOCK_MONOTONIC), ellapse = 0)
-    prof_dict[key].lap_start = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
-
-def prof_accumulate_lap(key):
-    global prof_dict
-
-    now = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
-    prof_dict[key].ellapse += now - prof_dict[key].lap_start
-
-def prof_accumulate_finish(key, msg=""):
-    global prof_dict
-
-    if not profile: return
-    print(f"{msg} - {key} ellapsed: {prof_dict[key].ellapse / (1000*1000)}ms")
-
-def prof_time(msg="", final=False):
-    global prof_last
-    global prof_start
-    global verbose
-
-    if not profile: return
-    last = prof_start if final else prof_last
-    now = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
-    print(f"{msg} - ellapsed: {(now - last) / (1000*1000)}ms")
-    prof_last = now
+fa = 4
+fs = 4
 
 RAD_90  = np.pi / 2
 RAD_45  = RAD_90 / 2
@@ -577,6 +536,41 @@ class cube(Object):
             m = Affine.rot3d(np.radians(hook[1])) @ Affine.trans3d([0, 0, hook[2]])
             self.attachment_hook(hook[0], m)
 
+class sphere(Object):
+    """
+    A Sphere
+
+    So far, just your standard everyday sphere.
+
+    Has example attachment hooks.
+
+    r   - Radius of the sphere.
+    d   - Diameter of the sphere
+    """
+
+    def __init__(self, r=None, d=None):
+        super().__init__()
+
+        self.name = "Sphere"
+        if d is not None:
+            r = d / 2
+        self.oscad_obj = scad.sphere(r=r)
+
+        """
+        Some examples of a named attachment hook.
+        """
+        hook_defs = [
+            ["front", [ 90,   0, 0], r],
+            ["back",  [-90,   0, 0], r],
+            ["right", [  0,  90, 0], r],
+            ["left",  [  0, -90, 0], r],
+            ["top",   [  0,   0, 0], r],
+            ["bottom",[180,   0, 0], r],
+        ]
+        for hook in hook_defs:
+            m = Affine.rot3d(np.radians(hook[1])) @ Affine.trans3d([0, 0, hook[2]])
+            self.attachment_hook(hook[0], m)
+
 class cylinder(Object):
     """
     A cylinder with additional features
@@ -706,7 +700,12 @@ class Faces():
         sum = 0
         for ii in range(len(self.faceMetrics)):
             sum += self.faceMetrics[ii].area
-        self.avg_area = sum / len(self.faceMetrics)
+        self.mean_area = sum / len(self.faceMetrics)
+
+        sosd = 0
+        for fm in self.faceMetrics:
+            sosd += (fm.area - self.mean_area) ** 2
+        self.deviation_area = np.sqrt(sosd / (len(self.faceMetrics) - 1))
 
     def get_matrix(self, index):
 
@@ -964,48 +963,60 @@ class Faces():
         """
         Retrieve the 'Face' who's 'normal' is the closest match to a given vector.
 
-        This can be used to find the appropriate face when you wish to attach to the "front" of an
-        object and don't know what particular face that is.
+        This can be used to find the appropriate face when you wish to attach to some side of an
+        object and don't know what particular face that side corresponds to.
+
+        Note: Irregulary shaped objects with rounded corners can lead to surprising selection results.
+
+              Use: Object.attach(parent, where=RT, how=Object.ATTACH_LARGE)
+              or use named attachment hooks if this selection is not appropriate for your use case.
 
         vec - The vector to compare face normals with
         """
 
-        ii = 0
-        nearest_angle   = tau
-        nearest         = 0
-        for normal in self.normals:
-            angle           = vector_angle(normal, vec)
-            if angle < nearest_angle:
-                nearest         = ii
-                nearest_angle   = angle
-            ii += 1
+        best_angle  = tau
+        selection   = 0
+        for ii in range(len(self.faceMetrics)):
+            angle  = vector_angle(self.faceMetrics[ii].normal, vec)
+            if angle < best_angle:
+                selection   = ii
+                best_angle  = angle
 
-        return nearest
+        return selection
 
     def large(self, vec):
         """
         Heuristic for selection of the "best" face who's normal points roughly in the direction
         of a given vector.
 
-        This can be used to find the appropriate face when you wish to attach to the "front" of an
-        object and don't know what particular face that is.
+        This can be used to find the appropriate face when you wish to attach to some side of an
+        irregularly shaped object and don't know what particular face that side corresponds to.
+
+        Nots: This heuristic does not work well when attempting to select the top or bottom
+              of spherical objects.  The faces of sperical objects become smaller as you
+              approach the top and bottom. 
+
+              Use: Object.attach(parent, where=TP, how=Object.ATTACH_NORM)
+              or use named attachment hooks if this selection is not appropriate for your use case.
 
         vec - The vector to compare face normals with
         """
 
         best_angle    = tau
-        large_area    = self.faceMetrics[0].area
-        large         = 0
-        threshold     = self.avg_area * 4
+        selection     = 0
+        # Choose a face that is larger than the average face by a couple
+        # standard deviations.  This assures that we will generally select
+        # a large flat face over a small rounded corner even though the 
+        # corner may match the given vector better.
+        threshold     = self.mean_area + self.deviation_area / 2
         for ii in range(len(self.faceMetrics)):
             angle  = vector_angle(self.faceMetrics[ii].normal, vec)
-            if angle <= best_angle and (self.faceMetrics[ii].area > threshold or
-                                        self.faceMetrics[ii].area >= large_area):
-                large         = ii
-                large_area    = self.faceMetrics[ii].area
-                best_angle    = angle
+            area = self.faceMetrics[ii].area
+            if area >= threshold and angle <= best_angle:
+                selection   = ii
+                best_angle  = angle
 
-        return large
+        return selection
 
     def __len__(self):
         """
@@ -1028,9 +1039,13 @@ class Faces():
 # Note to self.  The prisnoid mesh looks to have a lot of concentric triangles.
 # I don't know why hull would do this, but look into simplifying... somehow...
 
-p = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
+#p = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
+#p = cube(80, center=True)
+p = sphere(d=80)
 c = cube(10, center=True).color("blue")
-c2 = c.attach(p, TP)
+c2 = c.attach(p, where="bottom")
+#c2 = c.attach(p, where=RT, how=Object.ATTACH_LARGE)
+#c2 = c.attach(p, where=RT, how=Object.ATTACH_NORM)
 u1 = p | c2
 u1.show()
 #c2.show()
