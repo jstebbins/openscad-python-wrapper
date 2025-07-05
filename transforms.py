@@ -129,6 +129,12 @@ class Affine():
     def rot2d(a):
         return Affine.zrot3d(a).reduce(2, 2)
 
+    def around_center(cp, m):
+        cp = vec(cp, 3);
+        m1 = Affine.trans3d(cp)
+        m2 = Affine.trans3d(-cp)
+        return m1 @ m @ m2
+
 
 class Matrix():
     """
@@ -143,6 +149,8 @@ class Matrix():
         if isinstance(val, Matrix):
             self.matrix = val.matrix
             self.is_affine = val.is_affine
+        elif isinstance(val, np.ndarray):
+            self.matrix = val
         elif val is not None:
             self.matrix = np.array(val, dtype=self.type)
 
@@ -223,7 +231,10 @@ class Matrix():
 
     def __getitem__(self, key):
         if isinstance(key, int):
-            return self.matrix[key]
+            if isinstance(self.matrix[key], np.ndarray):
+                return Vector(self.matrix[key], affine=self.is_affine)
+            else:
+                return self.matrix[key]
         elif isinstance(key, slice):
             start, stop, step = key.indices(len(self.matrix))
             return [self.matrix[ii] for ii in range(start, stop, step)]
@@ -254,6 +265,10 @@ class Matrix():
         C = type(self)
         return C(self.matrix * x, affine=self.is_affine)
 
+    def __neg__(self):
+        C = type(self)
+        return C(self.matrix * -1, affine=self.is_affine)
+
     def __rmul__(self, x):
         C = type(self)
         return C(self.matrix * x, affine=self.is_affine)
@@ -278,14 +293,19 @@ class Matrix():
         return str(f"Matrix: {self.matrix}")
 
     def deaffine(self):
-        m = self.matrix
-        if self.is_affine:
+        if not self.is_affine:
+            return self
+
+        C = type(self)
+        m = np.copy(self.matrix)
+        if isinstance(self, Vector):
+            m = np.delete(m, len(self.matrix) - 1, 0)
+        else:
             if not isinstance(self, Points):
                 m = np.delete(m, len(self.matrix) - 1, 0)
             m = np.delete(m, len(self.matrix[0]) - 1, 1)
-        self.is_affine = False
-        self.matrix = m
-        return self
+
+        return C(m, affine=False)
 
     def list(self):
         return self.matrix.round(6).tolist()
@@ -363,7 +383,13 @@ class Vector(Matrix):
         return m.matrix @ self.matrix
 
     def cross(self, p):
-        return Points(np.linalg.cross(self.matrix, p), affine=self.is_affine)
+        # numpy cross vectors must not be affine
+        a = self.deaffine()
+        b = p.deaffine()
+        if isinstance(p, Vector):
+            return Vector(np.linalg.cross(a.matrix, b.matrix), affine=False)
+        else:
+            return Points(np.linalg.cross(a.matrix, b.matrix), affine=False)
 
     def abs(self):
         return Vector(np.fabs(self.matrix), affine=self.is_affine)
@@ -390,6 +416,14 @@ class Points(Matrix):
         for p in plist:
             self.append(p)
 
+    def points3d(self):
+        if len(self.matrix[0]) - self.is_affine == 3:
+            return self
+        pl = self.matrix.tolist()
+        for point in pl:
+            point = point.insert(2, 0)
+        return Points(pl, affine=self.is_affine)
+
     def append(self, val):
         val = self.check_affine(val)
         if isinstance(val, Vector):
@@ -413,8 +447,9 @@ class Points(Matrix):
     def affine(self):
         if self.is_affine: return self
 
-        cols = len(self.matrix[0])
-        self.expand(cols + 1, ones=True)
+        if self.matrix is not None and len(self.matrix) > 0:
+            cols = len(self.matrix[0])
+            self.expand(cols + 1, ones=True)
         self.is_affine = True
         return self
 

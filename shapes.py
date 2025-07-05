@@ -1,5 +1,6 @@
 import openscad as scad
 from transforms import *
+from sweep import *
 from dataclasses import dataclass
 import copy
 import functools
@@ -1067,19 +1068,16 @@ class Faces():
         if isinstance(key, Face):
             return key.index
 
-# Note to self.  The prisnoid mesh looks to have a lot of concentric triangles.
-# I don't know why hull would do this, but look into simplifying... somehow...
-
 #p = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
 #p = cube(80, center=True)
 #p = sphere(d=80)
-p = cylinder(h=100, r=[20, 10], ends=EdgeTreatment(round=5))
-c = cube(10, center=True).color("blue")
-c2 = c.attach(p, where="back")
+#p = cylinder(h=100, r=[20, 10], ends=EdgeTreatment(round=5))
+#c = cube(10, center=True).color("blue")
+#c2 = c.attach(p, where="back")
 #c2 = c.attach(p, where=RT, how=Object.ATTACH_LARGE)
 #c2 = c.attach(p, where=RT, how=Object.ATTACH_NORM)
-u1 = p | c2
-u1.show()
+#u1 = p | c2
+#u1.show()
 #c2.show()
 #p.faces()
 
@@ -1091,3 +1089,15 @@ u1.show()
 #print(c.origin)
 #print(c.oscad_obj.origin)
 
+radius = 75
+angle = np.radians(40)
+shape = Points(scad.circle(r=5, fn=50).mesh()[0])
+T = [
+    Affine.around_center(cp=[0, radius, 0], m=Affine.xrot3d(-angle * ii / 25)) @ 
+        Affine.scale3d([1 + ii / 25, 2 - ii / 25, 1])
+    for ii in range(25 + 1)
+]
+s = sweep(shape,T)
+
+p = polyhedron(points=s[0].deaffine().list(), faces=s[1])
+p.show()
