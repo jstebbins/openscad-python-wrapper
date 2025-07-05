@@ -607,17 +607,19 @@ class cylinder(Object):
         self.oscad_obj  = scad.polygon(cpath.deaffine().list()).rotate_extrude()
 
         r_mid = np.fmin(r[0], r[1]) + np.fabs(r[0] - r[1]) / 2
+        angle = np.degrees(np.atan((r[0] - r[1]) / h))
+        print("angle", angle)
 
         """
         Some examples of a named attachment hook.
         """
         hook_defs = [
-            ["front", [ 90,   0, 0], r_mid],
-            ["back",  [-90,   0, 0], r_mid],
-            ["right", [  0,  90, 0], r_mid],
-            ["left",  [  0, -90, 0], r_mid],
-            ["top",   [  0,   0, 0], h / 2],
-            ["bottom",[180,   0, 0], h / 2],
+            ["front", [  90 - angle,            0, 0], r_mid],
+            ["back",  [ -90 + angle,            0, 0], r_mid],
+            ["right", [            0,  90 - angle, 0], r_mid],
+            ["left",  [            0, -90 + angle, 0], r_mid],
+            ["top",   [            0,           0, 0], h / 2],
+            ["bottom",[          180,           0, 0], h / 2],
         ]
         for hook in hook_defs:
             m = Affine.rot3d(np.radians(hook[1])) @ Affine.trans3d([0, 0, hook[2]])
@@ -1068,12 +1070,12 @@ class Faces():
 # Note to self.  The prisnoid mesh looks to have a lot of concentric triangles.
 # I don't know why hull would do this, but look into simplifying... somehow...
 
-p = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
+#p = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
 #p = cube(80, center=True)
 #p = sphere(d=80)
-#p = cylinder(h=100, r=[20, 10], ends=EdgeTreatment(round=5))
+p = cylinder(h=100, r=[20, 10], ends=EdgeTreatment(round=5))
 c = cube(10, center=True).color("blue")
-c2 = c.attach(p, where=RT)
+c2 = c.attach(p, where="back")
 #c2 = c.attach(p, where=RT, how=Object.ATTACH_LARGE)
 #c2 = c.attach(p, where=RT, how=Object.ATTACH_NORM)
 u1 = p | c2
