@@ -1068,6 +1068,71 @@ class Faces():
         if isinstance(key, Face):
             return key.index
 
+"""
+sweep usage examples
+"""
+@dataclass()
+class TransformContextExample():
+    """
+    Example transform context for sweep
+    """
+
+    index  : int    = 0
+    stop   : int    = 25
+    radius : float  = 75
+    angle  : float  = np.radians(40)
+
+@dataclass()
+class ShapeContextExample():
+    """
+    example shape context for sweep
+    Note: The shape callback to sweep must return the same number of
+          points for each call. See fn below...
+    """
+
+    radius : float  = 5
+    fn     : int    = 50
+
+def sweepTransformExample(context):
+    if context.index > context.stop:
+        return None
+
+    m = (Affine.around_center(cp=[0, context.radius, 0],
+                              m=Affine.xrot3d(-context.angle * context.index / 25)) @
+         Affine.scale3d([1 + context.index / 25, 2 - context.index / 25, 1]))
+    context.index += 1
+    return m
+
+def sweepShapeExample(context):
+    shape = scad.circle(r=context.radius, fn=context.fn).mesh()[0]
+    context.radius += 1
+    return shape
+
+'''
+# sweep with transform callback and shape callback
+xcontext = TransformContextExample()
+scontext = ShapeContextExample()
+s = sweep(sweepShapeExample, sweepTransformExample, shapeContext=scontext, transformContext=xcontext)
+
+p = polyhedron(points=s[0], faces=s[1])
+p.show()
+
+# sweep with transform list and static shape
+radius = 75
+angle = np.radians(40)
+shape = scad.circle(r=5, fn=50).mesh()[0]
+T = [
+    Affine.around_center(cp=[0, radius, 0], m=Affine.xrot3d(-angle * ii / 25)) @
+        Affine.scale3d([1 + ii / 25, 2 - ii / 25, 1])
+    for ii in range(25 + 1)
+]
+s = sweep(shape, T)
+
+p = polyhedron(points=s[0], faces=s[1])
+p.show()
+'''
+
+
 #p = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
 #p = cube(80, center=True)
 #p = sphere(d=80)
@@ -1089,15 +1154,4 @@ class Faces():
 #print(c.origin)
 #print(c.oscad_obj.origin)
 
-radius = 75
-angle = np.radians(40)
-shape = scad.circle(r=5, fn=50).mesh()[0]
-T = [
-    Affine.around_center(cp=[0, radius, 0], m=Affine.xrot3d(-angle * ii / 25)) @ 
-        Affine.scale3d([1 + ii / 25, 2 - ii / 25, 1])
-    for ii in range(25 + 1)
-]
-s = sweep(shape,T)
 
-p = polyhedron(points=s[0], faces=s[1])
-p.show()

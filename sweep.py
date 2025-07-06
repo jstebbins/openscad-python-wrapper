@@ -41,13 +41,36 @@ def generate_faces(shapes):
 
     return [verts, culled_faces]
 
-def sweep(shape, transforms):
+def sweep(shape, transforms, shapeContext=None, transformContext=None):
     """
     shape       - A collection of points
-    transforms  - a list of 4x4 Affine transforms
+                  May be a callback
+                  Callback is called once each iteration with
+                  shapeContext parameter
+    transforms  - A list of 4x4 Affine transforms
+                  May be a callback
+                  Callback is called once each iteration with
+                  transformContext parameter
     """
 
-    shape = Points(shape).points3d()
-    transformed_shapes = [transform @ shape for transform in transforms]
+    print("xform", transformContext)
+    print("shape", shapeContext)
+    if not callable(shape):
+        a_shape = Points(shape).points3d()
+    transformed_shapes = []
+    if callable(transforms):
+        while True:
+            transform = transforms(transformContext)
+            if transform is None:
+                break
+            if callable(shape):
+                a_shape = Points(shape(shapeContext)).points3d()
+
+            transformed_shapes.append(transform @ a_shape)
+    else:
+        for transform in transforms:
+            if callable(shape):
+                a_shape = Points(shape(shapeContext)).points3d()
+            transformed_shapes.append(transform @ a_shape)
 
     return generate_faces(transformed_shapes)
