@@ -109,7 +109,7 @@ def arc(r, center=None, angle_range=None, corner=None):
     """
 
     if corner is not None:
-        return corner_arc(r, Points(corner, affine=True))
+        return corner_arc(r, Points(corner))
     else:
         center      = [0, 0] if center is None else center
         angle_range = [0, tau] if angle_range is None else angle_range
@@ -670,7 +670,6 @@ class cylinder(Object):
 
         r_mid = np.fmin(r[0], r[1]) + np.fabs(r[0] - r[1]) / 2
         angle = np.degrees(np.atan((r[0] - r[1]) / h))
-        print("angle", angle)
 
         """
         Some examples of a named attachment hook.
@@ -1252,16 +1251,17 @@ p.show()
 
 '''
 
-p = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
-faces = p.faces()
-p.show()
+#p = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
+#faces = p.faces()
+#p.show()
 #m = p.mesh()
 #print(m)
 #p = cube(80, center=True)
 #p = sphere(d=80)
 #p = cylinder(h=100, r=[20, 10], ends=EdgeTreatment(round=5))
+#p.show()
 #c = cube(10, center=True).color("blue")
-#c2 = c.attach(p, where="back")
+#c2 = c.attach(p, where="right")
 #c2 = c.attach(p, where=RT, how=Object.ATTACH_LARGE)
 #c2 = c.attach(p, where=RT, how=Object.ATTACH_NORM)
 #u1 = p | c2
