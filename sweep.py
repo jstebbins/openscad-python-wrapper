@@ -118,13 +118,14 @@ def path_sweep(shape, path, closed=False):
 class RotateSweepContext():
     index   :   int     = 0
     steps   :   int     = None
+    step    :   float   = None
     start   :   float   = None
     span    :   float   = None
 
 def rotateSweepTransform(context):
     if context.index >= context.steps: return None
     m = Affine.rot3d([np.pi / 2, 0,
-        context.start + context.span - context.index * context.span / context.steps])
+        context.start + context.span - context.index * context.step])
     context.index += 1
     return m
 
@@ -143,6 +144,11 @@ def rotate_sweep(shape, angle=360, shapeContext=None):
     else:
         steps = np.ceil(segs(0) * span / 360)
 
-    context = RotateSweepContext(index=0, steps=steps, start=np.radians(start), span=np.radians(span))
+    closed = span == 360
+    start   = np.radians(start)
+    span    = np.radians(span)
+    step    = span / steps
+    if span < tau: steps += 1
+    context = RotateSweepContext(index=0, steps=steps, step=step, start=start, span=span)
 
-    return sweep(shape, transforms=rotateSweepTransform, closed=span==360, transformContext=context, shapeContext=shapeContext)
+    return sweep(shape, transforms=rotateSweepTransform, closed=closed, transformContext=context, shapeContext=shapeContext)

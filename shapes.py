@@ -243,7 +243,7 @@ def parseArgs(defaults, *args, **kwargs):
     args        - Positional arguments
     kwargs      - Key value pair arguments
 
-    defaults contains a list of args that we will be processing
+    defaults contains a dict of args that we will be processing
     ourself.  These are stripped from kwargs upon return.  The remaining
     kwargs are passed through to OpenSCAD. This ensures arguments
     such as fn, fs, fa that are universal to OpenSCAD get passed
