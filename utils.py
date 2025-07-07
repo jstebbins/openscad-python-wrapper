@@ -6,15 +6,15 @@ def get_fnas():
     try:
         fn = __main__.fn
     except AttributeError:
-        fn = 1
+        fn = None
     try:
         fs = __main__.fs
     except AttributeError:
-        fs = 1
+        fs = 5
     try:
         fa = __main__.fa
     except AttributeError:
-        fa = 1
+        fa = 5
 
     return fn, fa, fs
 

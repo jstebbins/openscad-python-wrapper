@@ -207,7 +207,6 @@ def cyl_path(r, l, ends=None):
 
     return Points.concat_init([pre, bot, top, post])
 
-
 def extrude_from_to(obj, pt1, pt2):
     pt1 = point3d(pt1)
     pt2 = point3d(pt2)
@@ -283,14 +282,8 @@ class FaceMetrics():
     objects relative to another object's face.
     """
 
-    index  : int    = 0     # This element's index into the FaceMetrics list
     normal : Vector = None  # A unit vector perpendicular to the face.
-    matrix : Matrix = None  # Transform matrix maping coordinates onto a face.
-                            # 'matrix' will transform points to be relative to the center
-                            # point of the face with the face 'normal' as the positive Z-axis.
     area   : float  = None  # The area of the face, used for filtering out small faces
-    size   : list   = None  # the size of the face, used for filtering out small faces
-                            # The size is defined by a square bounding box that contains all face points
 
 @dataclass()
 class Mesh():
@@ -298,9 +291,6 @@ class Mesh():
     faces   : list      = None
 
 class Object():
-    ATTACH_LARGE = 0
-    ATTACH_NORM  = 1
-
     """
     Base class for all OpenSCAD objects. This allows adding features that are "missing"
     from the openscad module. I put "missing" in quotes because TBH, for most of these
@@ -308,10 +298,20 @@ class Object():
     So far, I have found that the foundation supplied by the openscad module is enough.
 
     It would be nice however if the openscad module supplied a base class that I could
-    subclass from.  I have hacked around this with some '__getattr__' magic.
+    subclass from.  I have hacked around this with some '__magicfunc__' magic.
     """
+    ATTACH_LARGE = 0
+    ATTACH_NORM  = 1
+
+    once = False    # Gets set after one-time initializations are done
 
     def __init__(self, object=None):
+        global fn, fa, fs
+
+        if not Object.once:
+            fn, fa, fs  = get_fnas()
+            Object.once = True
+
         self.name           = "Base"
         self.oscad_obj      = None
         self.face_cache     = None
@@ -818,14 +818,14 @@ class Faces():
         # Remap object points to be relative to [0, 0, 0] with no rotation
         # I want all values *except* FaceMetrics.origin to be independent of the objects
         # current position and orientation.
-        self.points         = self.i_origin @ Points(mesh[0])
-        self.faceMetrics    = [FaceMetrics() for _ in range(len(mesh[1]))]
+        self.points         = self.i_origin @ Points(mesh.points)
+        self.faceMetrics    = [FaceMetrics() for _ in range(len(mesh.faces))]
 
-        self.get_normals(mesh[1], self.faceMetrics)
-        self.get_areas(mesh[1], self.faceMetrics)
+        self.get_normals(mesh.faces, self.faceMetrics)
+        self.get_areas(mesh.faces, self.faceMetrics)
 
         # Unify adjacent triangles that share a common normal
-        self.faces, deleted = self.unify_faces(mesh[1], self.faceMetrics)
+        self.faces, deleted = self.unify_faces(mesh.faces, self.faceMetrics)
         # Eliminate metrics for deleted faces
         self.faceMetrics = [self.faceMetrics[ii] for ii in range(len(self.faceMetrics)) if ii not in deleted]
 
@@ -1167,8 +1167,6 @@ class Faces():
                 return self.large(key)
         if isinstance(key, int):
             return key
-        if isinstance(key, Face):
-            return key.index
 
 """
 sweep usage examples
@@ -1254,8 +1252,9 @@ p.show()
 
 '''
 
-#p = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
-#p.show()
+p = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
+faces = p.faces()
+p.show()
 #m = p.mesh()
 #print(m)
 #p = cube(80, center=True)
