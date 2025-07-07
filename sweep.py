@@ -114,3 +114,35 @@ def path_sweep(shape, path, closed=False):
 
     return sweep(shape, transforms, closed)
 
+@dataclass()
+class RotateSweepContext():
+    index   :   int     = 0
+    steps   :   int     = None
+    start   :   float   = None
+    span    :   float   = None
+
+def rotateSweepTransform(context):
+    if context.index >= context.steps: return None
+    m = Affine.rot3d([np.pi / 2, 0,
+        context.start + context.span - context.index * context.span / context.steps])
+    context.index += 1
+    return m
+
+def rotate_sweep(shape, angle=360, shapeContext=None):
+    if not isinstance(angle, list):
+        start = 0
+        span  = angle
+    else:
+        start = angle[0]
+        span  = angle[1]
+
+    if not callable(shape):
+        a_shape = Points(shape).points3d()
+        [lo, hi] = a_shape.bounds()
+        steps = np.ceil(segs(hi.x) * span / 360)
+    else:
+        steps = np.ceil(segs(0) * span / 360)
+
+    context = RotateSweepContext(index=0, steps=steps, start=np.radians(start), span=np.radians(span))
+
+    return sweep(shape, transforms=rotateSweepTransform, closed=span==360, transformContext=context, shapeContext=shapeContext)

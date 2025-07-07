@@ -6,8 +6,8 @@ import copy
 import functools
 
 fn = None
-fa = 2
-fs = 2
+fa = 5
+fs = 5
 
 RAD_90  = np.pi / 2
 RAD_45  = RAD_90 / 2
@@ -1193,7 +1193,7 @@ class ShapeContextExample():
     """
 
     radius : float  = 5
-    fn     : int    = 50
+    fn     : int    = 40
 
 def sweepTransformExample(context):
     if context.index > context.stop:
@@ -1206,8 +1206,9 @@ def sweepTransformExample(context):
     return m
 
 def sweepShapeExample(context):
-    shape = circle(r=context.radius, fn=context.fn).mesh().points
-    context.radius += 1
+    c = circle(r=context.radius, fn=context.fn).right(50)
+    shape = c.mesh().points
+    context.radius += .2
     return shape
 
 '''
@@ -1239,8 +1240,19 @@ sq = square(6, center=True).mesh().points
 s = path_sweep(sq, path, closed=True)
 p = polyhedron(points=s[0], faces=s[1])
 p.show()
-'''
 
+c = circle(d=20, fn=40).right(50)
+shape = c.mesh().points
+s = rotate_sweep(shape, angle=360)
+p = polyhedron(points=s[0], faces=s[1])
+p.show()
+
+context = ShapeContextExample(radius=10)
+s = rotate_sweep(sweepShapeExample, shapeContext=context, angle=360)
+p = polyhedron(points=s[0], faces=s[1])
+p.show()
+
+'''
 
 #p = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
 #p.show()

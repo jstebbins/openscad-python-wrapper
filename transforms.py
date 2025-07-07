@@ -108,7 +108,7 @@ class Affine():
         return Matrix(m, affine=True)
 
     def rot3d(v=[0,0,0]):
-        return Affine.xrot3d(v[0]) @ Affine.yrot3d(v[1]) @ Affine.zrot3d(v[2])
+        return Affine.zrot3d(v[2]) @ Affine.yrot3d(v[1]) @ Affine.xrot3d(v[0])
 
     def rot3d_from_to(fr, to):
         fr  = unit(point3d(fr))
@@ -490,6 +490,18 @@ class Points(Matrix):
         u = Points( [ p.unit() for p in points ] )
         return u
 
+    def bounds(self):
+        lo = Vector(self[0])
+        hi = Vector(self[0])
+        for p in self:
+            if p.x < lo.x: lo.x = p.x
+            if p.y < lo.y: lo.y = p.y
+            if p.z < lo.z: lo.z = p.z
+            if p.x > hi.x: hi.x = p.x
+            if p.y > hi.y: hi.y = p.y
+            if p.z > hi.z: hi.z = p.z
+        return [lo, hi]
+
 """
 Helper vectors and functions that return vectors
 """
@@ -609,7 +621,10 @@ def segs(r):
         if fn > 3: return fn
         return 3
 
-    segs = np.ceil(np.fmax(3, np.fmin(360 / fa, np.fabs(r) * 2 * np.pi / fs)))
+    if r > 0:
+        segs = np.ceil(np.fmax(3, np.fmin(360 / fa, np.fabs(r) * 2 * np.pi / fs)))
+    else:
+        segs = np.ceil(np.fmax(3, 360 / fa))
     return segs
 
 def constrain(v, minval, maxval):
