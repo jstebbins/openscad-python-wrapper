@@ -13,7 +13,6 @@ RAD_90  = np.pi / 2
 RAD_45  = RAD_90 / 2
 RAD_180 = np.pi
 RAD_270 = RAD_180 + RAD_90
-tau = 2 * np.pi
 
 def is_tup(var):
     """
@@ -57,7 +56,7 @@ def lst(val, dim, fill=None):
     if is_vec(val):
         l = len(val)
         fill = val[l-1] if fill is None else fill
-        return tuple(val[ii] if ii < l else fill for ii in range(dim))
+        return [val[ii] if ii < l else fill for ii in range(dim)]
     return [val for ii in range(dim)]
 
 def center_arc(r, center, angle_range):
@@ -237,6 +236,46 @@ def mesh_edges(mesh):
         edges.append(face_edges)
     return edges
 
+def parseArgs(defaults, *args, **kwargs):
+    """
+    Preprocess argument list
+
+    defaults    - A list of arguments we care about
+    args        - Positional arguments
+    kwargs      - Key value pair arguments
+
+    defaults contains a list of args that we will be processing
+    ourself.  These are stripped from kwargs upon return.  The remaining
+    kwargs are passed through to OpenSCAD. This ensures arguments
+    such as fn, fs, fa that are universal to OpenSCAD get passed
+    along even though I mostly don't need to know about them.
+    """
+
+    d = dict()
+    for ii in range(len(args)):
+        d[list(defaults)[ii]] = args[ii]
+
+    for k, v in kwargs.items():
+        assert k not in d, f"positional argument repeated as kwarg {k}"
+        if k in defaults:
+            d[k] = v
+
+    for k in defaults:
+        if k not in d:
+            d[k] = defaults[k]
+
+    # strip away kwargs that we will process
+    for k in d:
+        kwargs.pop(k, None)
+
+    # prepare the list of values we will be handling
+    result = []
+    for k in defaults:
+        result.append(d[k])
+
+    # result contains args we will process.  kwargs contains args we are just passing along
+    return result, kwargs
+
 @dataclass()
 class FaceMetrics():
     """
@@ -252,6 +291,11 @@ class FaceMetrics():
     area   : float  = None  # The area of the face, used for filtering out small faces
     size   : list   = None  # the size of the face, used for filtering out small faces
                             # The size is defined by a square bounding box that contains all face points
+
+@dataclass()
+class Mesh():
+    points  : Points    = None
+    faces   : list      = None
 
 class Object():
     ATTACH_LARGE = 0
@@ -417,6 +461,14 @@ class Object():
 
         return wf
 
+    def mesh(self):
+        mesh = self.oscad_obj.mesh()
+        # 2D objects only have points, no faces
+        if len(mesh) > 1:
+            return Mesh(points=Points(mesh[0]), faces=mesh[1])
+        else:
+            return Mesh(points=Points(mesh[0]), faces=None)
+
     def translate(self, v):
         res = Object(self)
 
@@ -527,12 +579,15 @@ class cube(Object):
               corner at the current origin
     """
 
-    def __init__(self, size, center=False):
+    def __init__(self, *args, **kwargs):
         super().__init__()
+
+        defaults = {"size" : 10, "center" : True}
+        [size, center], kwargs = parseArgs(defaults, *args, **kwargs)
 
         self.name = "Cube"
         size = lst(size, 3)
-        self.oscad_obj = scad.cube(size, center)
+        self.oscad_obj = scad.cube(size, center, **kwargs)
 
         """
         Some examples of a named attachment hook.
@@ -561,13 +616,16 @@ class sphere(Object):
     d   - Diameter of the sphere
     """
 
-    def __init__(self, r=None, d=None):
+    def __init__(self, *args, **kwargs):
         super().__init__()
+
+        defaults = {"r" : None, "d" : None}
+        [r, d], kwargs = parseArgs(defaults, *args, **kwargs)
 
         self.name = "Sphere"
         if d is not None:
             r = d / 2
-        self.oscad_obj = scad.sphere(r=r)
+        self.oscad_obj = scad.sphere(r=r, **kwargs)
 
         """
         Some examples of a named attachment hook.
@@ -595,8 +653,11 @@ class cylinder(Object):
     ends    - See 'EdgeTreatment'. 2-tuple if top and bottom have different end treatments
     """
 
-    def __init__(self, r, h, ends=None, d=None):
+    def __init__(self, *args, **kwargs):
         super().__init__()
+
+        defaults = {"r" : None, "h" : None, "ends" : None, "d" : None}
+        [r, h, ends, d], kwargs = parseArgs(defaults, *args, **kwargs)
 
         if d is not None:
             d           = tup(r, 2)
@@ -692,6 +753,47 @@ class prisnoid(Object):
                    tuple(scad.sphere(rnd2[ii]).translate(top_corners[ii]) for ii in range(4)))
 
         self.oscad_obj = scad.hull(*spheres)
+
+class circle(Object):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+
+        defaults = {"r" : 10, "d" : None}
+        [r, d], kwargs = parseArgs(defaults, *args, **kwargs)
+
+        if d is not None:
+            r = d / 2;
+
+        self.name       = "Circle"
+        self.oscad_obj  = scad.circle(r=r, **kwargs)
+
+class square(Object):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+
+        defaults = {"size" : 10, "center" : False}
+        [size, center], kwargs = parseArgs(defaults, *args, **kwargs)
+
+        size = lst(size, 2)
+
+        self.name       = "Square"
+        self.oscad_obj  = scad.square(size, center=center, **kwargs)
+
+class polygon(Object):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+
+        self.name       = "Polygon"
+        self.oscad_obj  = scad.polygon(*args, **kwargs)
+
+class text(Object):
+    def __init__(self, *args, **kwargs):
+
+        defaults = {"text" : "", "size" : 10}
+        [text, size], kwargs = parseArgs(defaults, *args, **kwargs)
+
+        self.name       = "Text"
+        self.oscad_obj = scad.text(text, size, **kwargs)
 
 class Faces():
     """
@@ -1104,7 +1206,7 @@ def sweepTransformExample(context):
     return m
 
 def sweepShapeExample(context):
-    shape = scad.circle(r=context.radius, fn=context.fn).mesh()[0]
+    shape = circle(r=context.radius, fn=context.fn).mesh().points
     context.radius += 1
     return shape
 
@@ -1120,7 +1222,7 @@ p.show()
 # sweep with transform list and static shape
 radius = 75
 angle = np.radians(40)
-shape = scad.circle(r=5, fn=50).mesh()[0]
+shape = circle(r=5, fn=50).mesh().points
 T = [
     Affine.around_center(cp=[0, radius, 0], m=Affine.xrot3d(-angle * ii / 25)) @
         Affine.scale3d([1 + ii / 25, 2 - ii / 25, 1])
@@ -1130,10 +1232,20 @@ s = sweep(shape, T)
 
 p = polyhedron(points=s[0], faces=s[1])
 p.show()
+
+#path = Points([[ theta / 10, 10 * np.sin(np.radians(theta))] for theta in range(-180, 180, 5)])
+path = circle(r=40).mesh().points
+sq = square(6, center=True).mesh().points
+s = path_sweep(sq, path, closed=True)
+p = polyhedron(points=s[0], faces=s[1])
+p.show()
 '''
 
 
 #p = prisnoid(250, 140, 20, 33, 170, shift=[-55, -55])
+#p.show()
+#m = p.mesh()
+#print(m)
 #p = cube(80, center=True)
 #p = sphere(d=80)
 #p = cylinder(h=100, r=[20, 10], ends=EdgeTreatment(round=5))

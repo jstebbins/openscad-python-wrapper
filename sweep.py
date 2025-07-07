@@ -1,6 +1,7 @@
 from transforms import *
+from dataclasses import dataclass
 
-def generate_faces(shapes):
+def generate_faces(shapes, closed):
     """
     This function assums the shapes all have the same number of points
     """
@@ -13,11 +14,12 @@ def generate_faces(shapes):
     # Cap the ends
     nshapes = len(shapes)
     npoints = len(shapes[0])
-    cap = [ii for ii in range(npoints - 1, -1, -1)]
-    faces.append(cap)
-    cap = [ii for ii in range((nshapes - 1) * npoints, nshapes * npoints)]
-    faces.append(cap)
-    for ss in range(nshapes - 1):
+    if not closed:
+        cap = [ii for ii in range(npoints - 1, -1, -1)]
+        faces.append(cap)
+        cap = [ii for ii in range((nshapes - 1) * npoints, nshapes * npoints)]
+        faces.append(cap)
+    for ss in range(nshapes - (not closed)):
         for pp in range(npoints):
             p1 = ((ss + 0) % nshapes) * npoints + ((pp + 0) % npoints)
             p2 = ((ss + 1) % nshapes) * npoints + ((pp + 0) % npoints)
@@ -41,7 +43,7 @@ def generate_faces(shapes):
 
     return [verts, culled_faces]
 
-def sweep(shape, transforms, shapeContext=None, transformContext=None):
+def sweep(shape, transforms, closed=False, shapeContext=None, transformContext=None):
     """
     shape       - A collection of points
                   May be a callback
@@ -53,8 +55,6 @@ def sweep(shape, transforms, shapeContext=None, transformContext=None):
                   transformContext parameter
     """
 
-    print("xform", transformContext)
-    print("shape", shapeContext)
     if not callable(shape):
         a_shape = Points(shape).points3d()
     transformed_shapes = []
@@ -65,12 +65,52 @@ def sweep(shape, transforms, shapeContext=None, transformContext=None):
                 break
             if callable(shape):
                 a_shape = Points(shape(shapeContext)).points3d()
+                if a_shape is None:
+                    break
 
             transformed_shapes.append(transform @ a_shape)
     else:
         for transform in transforms:
             if callable(shape):
                 a_shape = Points(shape(shapeContext)).points3d()
+                if a_shape is None:
+                    break
             transformed_shapes.append(transform @ a_shape)
 
-    return generate_faces(transformed_shapes)
+    return generate_faces(transformed_shapes, closed)
+
+def path_sweep(shape, path, closed=False):
+
+    path = Points(path).points3d()
+    tangents = path_tangents(path, closed)
+    normal = BK if np.fabs(tangents[0].z) > 1 / np.sqrt(2) else UP
+
+    npoints = len(path)
+    ynorm   = normal - (normal @ tangents[0]) * tangents[0]
+    rot     = frame_map(y=ynorm, z=tangents[0])
+    r       = ynorm
+    rotations = [rot]
+    for ii in range(len(tangents) - 1 + closed):
+        v1 = path[(ii + 1) % npoints] - path[ii % npoints]
+        c1 = v1 @ v1
+        rL = r - 2 * (v1 @ r) / c1 * v1
+        tL = tangents[ii % npoints] - 2 * (v1 @ tangents[ii % npoints]) / c1 * v1
+        v2 = tangents[(ii + 1) % npoints] - tL
+        c2 = v2 @ v2
+        r  = rL - (2 / c2) * (v2 @ rL) * v2
+        rot = frame_map(y=r, z=tangents[(ii + 1) % npoints])
+        rotations.append(rot)
+
+    last_rot    = rotations[len(rotations) - 1]
+    ref_rot     = rotations[0] if closed else last_rot
+    mismatch    = last_rot.adj() @ ref_rot
+    correction  = np.atan2(mismatch[1][0], mismatch[0][0])
+    twistfix    = correction % tau
+
+    transforms = [ Affine.trans3d(path[ii]) @ rotations[ii] @ Affine.zrot3d(twistfix * (ii / (len(path) + closed)))
+                   for ii in range(len(path)) ]
+    if closed:
+        transforms.append( Affine.trans3d(path[0]) @ rotations[0] @ Affine.zrot3d(-correction + correction % tau) )
+
+    return sweep(shape, transforms, closed)
+

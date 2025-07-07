@@ -2,6 +2,7 @@ import numpy as np
 from utils import get_fnas
 
 eps = 1e-6
+tau = 2 * np.pi
 
 def is_vec(var):
     """
@@ -391,6 +392,14 @@ class Vector(Matrix):
         else:
             return Points(np.linalg.cross(a.matrix, b.matrix), affine=False)
 
+    def unit(self, error=None):
+        if error is not None and norm(self) < eps:
+            return error
+        return self / norm(self)
+
+    def norm(self):
+        return np.linalg.norm(self)
+
     def abs(self):
         return Vector(np.fabs(self.matrix), affine=self.is_affine)
 
@@ -455,6 +464,31 @@ class Points(Matrix):
 
     def mean(self):
         return sum(v for v in self.matrix) / len(self.matrix)
+
+    def deriv(self, step=1, closed=False):
+        npoints = len(self.matrix)
+        if closed:
+            d = Points([ (self[(ii + 1) % npoints] - self[(npoints + ii - 1) % npoints]) / 2 / step
+                        for ii in range(npoints) ])
+        else:
+            if npoints < 3:
+                first = self[1] - self[0]
+                last  = self[npoints - 1] - self[npoints - 2]
+            else:
+                first = 3 * (self[1] - self[0]) - (self[2] - self[1])
+                last =  (self[npoints - 3] - self[npoints - 2]) - 3 * (self[npoints - 2] - self[npoints - 1])
+
+            l =       [first / 2 / step]
+            l.extend( [(self[ii + 1] - self[ii - 1]) / 2 / step for ii in range(1, npoints - 1)] )
+            l.extend( [last  / 2 / step] )
+            d = Points(l)
+
+        return d
+
+    def unit(self):
+        points = self.deaffine()
+        u = Points( [ p.unit() for p in points ] )
+        return u
 
 """
 Helper vectors and functions that return vectors
@@ -581,3 +615,21 @@ def segs(r):
 def constrain(v, minval, maxval):
     return np.fmin(maxval, np.fmax(minval, v))
 
+def path_tangents(path, closed):
+    return path.deriv(closed=closed).unit()
+
+def frame_map(x=None, y=None, z=None):
+    if x is not None: x = x.unit(RT)
+    if y is not None: y = y.unit(BK)
+    if z is not None: z = z.unit(UP)
+
+    if x is None:
+        map = Matrix([y.cross(z), y, z]).adj().affine()
+    elif y is None:
+        map = Matrix([x, z.cross(x), z]).adj().affine()
+    elif z is None:
+        map = Matrix([x, y, x.cross(y)]).adj().affine()
+    else:
+        map = Matrix([x, y, z]).adj().affine()
+
+    return map
