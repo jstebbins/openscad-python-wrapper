@@ -1204,19 +1204,6 @@ def test_prisnoid():
     return t1 | t2
 
 def test_rotate_sweep():
-    '''
-    @dataclass()
-    class SweepContextExample():
-        """
-        example shape context for sweep
-        Note: The shape callback to sweep must return the same number of
-              points for each call. See fn below...
-        """
-
-        radius : float  = 5
-        fn     : int    = 40
-    '''
-
     def sweepShapeExample(context):
         if not hasattr(context, "radius"):
             # This is a little dirty ;)
