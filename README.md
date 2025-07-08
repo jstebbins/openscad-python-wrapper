@@ -12,6 +12,9 @@ Python in OpenSCAD.
 I'm making it public on github to serve as example code to anyone
 that has an interest in trying out OpenSCAD's Python support.
 
+Here's a little Zoo of test objects from my test "suite"
+![screenshot](images/Test%20Object%20Zoo.png)
+
 Notes:
 
 I'm running OpenSCAD on Fedora Linux using the AppImage Development Snapshots.
