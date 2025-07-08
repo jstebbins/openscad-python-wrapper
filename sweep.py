@@ -43,6 +43,24 @@ def generate_faces(shapes, closed):
 
     return [verts, culled_faces]
 
+def get_shape(shape, context=None, call=False):
+    from shapes import Object
+
+    if not callable(shape):
+        if isinstance(shape, Object):
+            shape = shape.mesh().points
+        shape = Points(shape).points3d()
+    elif call:
+        shape = shape(context)
+        if shape is not None:
+            if isinstance(shape, Object):
+                shape = shape.mesh().points
+            shape = Points(shape).points3d()
+    else:
+        return None
+
+    return shape
+
 def sweep(shape, transforms, closed=False, context=None):
     """
     shape       - A collection of points
@@ -55,8 +73,7 @@ def sweep(shape, transforms, closed=False, context=None):
                   context parameter
     """
 
-    if not callable(shape):
-        a_shape = Points(shape).points3d()
+    a_shape = get_shape(shape)
     transformed_shapes = []
     if callable(transforms):
         while True:
@@ -64,15 +81,14 @@ def sweep(shape, transforms, closed=False, context=None):
             if transform is None:
                 break
             if callable(shape):
-                a_shape = Points(shape(context)).points3d()
+                a_shape = get_shape(shape, context=context, call=True)
                 if a_shape is None:
                     break
-
             transformed_shapes.append(transform @ a_shape)
     else:
         for transform in transforms:
             if callable(shape):
-                a_shape = Points(shape(context)).points3d()
+                a_shape = get_shape(shape, context=context, call=True)
                 if a_shape is None:
                     break
             transformed_shapes.append(transform @ a_shape)
@@ -137,8 +153,8 @@ def rotate_sweep(shape, angle=360):
         start = angle[0]
         span  = angle[1]
 
-    if not callable(shape):
-        a_shape = Points(shape).points3d()
+    a_shape = get_shape(shape)
+    if a_shape is not None:
         [lo, hi] = a_shape.bounds()
         steps = np.ceil(segs(hi.x) * span / 360)
     else:
