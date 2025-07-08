@@ -43,16 +43,16 @@ def generate_faces(shapes, closed):
 
     return [verts, culled_faces]
 
-def sweep(shape, transforms, closed=False, shapeContext=None, transformContext=None):
+def sweep(shape, transforms, closed=False, context=None):
     """
     shape       - A collection of points
                   May be a callback
                   Callback is called once each iteration with
-                  shapeContext parameter
+                  context parameter
     transforms  - A list of 4x4 Affine transforms
                   May be a callback
                   Callback is called once each iteration with
-                  transformContext parameter
+                  context parameter
     """
 
     if not callable(shape):
@@ -60,11 +60,11 @@ def sweep(shape, transforms, closed=False, shapeContext=None, transformContext=N
     transformed_shapes = []
     if callable(transforms):
         while True:
-            transform = transforms(transformContext)
+            transform = transforms(context)
             if transform is None:
                 break
             if callable(shape):
-                a_shape = Points(shape(shapeContext)).points3d()
+                a_shape = Points(shape(context)).points3d()
                 if a_shape is None:
                     break
 
@@ -72,7 +72,7 @@ def sweep(shape, transforms, closed=False, shapeContext=None, transformContext=N
     else:
         for transform in transforms:
             if callable(shape):
-                a_shape = Points(shape(shapeContext)).points3d()
+                a_shape = Points(shape(context)).points3d()
                 if a_shape is None:
                     break
             transformed_shapes.append(transform @ a_shape)
@@ -129,7 +129,7 @@ def rotateSweepTransform(context):
     context.index += 1
     return m
 
-def rotate_sweep(shape, angle=360, shapeContext=None):
+def rotate_sweep(shape, angle=360):
     if not isinstance(angle, list):
         start = 0
         span  = angle
@@ -151,4 +151,4 @@ def rotate_sweep(shape, angle=360, shapeContext=None):
     if span < tau: steps += 1
     context = RotateSweepContext(index=0, steps=steps, step=step, start=start, span=span)
 
-    return sweep(shape, transforms=rotateSweepTransform, closed=closed, transformContext=context, shapeContext=shapeContext)
+    return sweep(shape, transforms=rotateSweepTransform, closed=closed, context=context)

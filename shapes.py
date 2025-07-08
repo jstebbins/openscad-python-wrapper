@@ -556,7 +556,6 @@ class Object():
             parent_faces        = parent.faces()
             parent_face_index   = parent_faces.find_face(where, how);
             parent_faceMetrics  = parent_faces.faceMetrics[parent_face_index];
-            print("pfi", parent_face_index)
             m = parent_faces.get_matrix(parent_face_index)
 
         origin  = Matrix(parent.oscad_obj.origin, affine=True) @ m
@@ -861,9 +860,7 @@ class Faces():
         z_off    = float(normalized_face[0][2])
         bound_lo = copy.deepcopy(normalized_face[0])
         bound_hi = copy.deepcopy(normalized_face[0])
-        print("bound", bound_lo, bound_hi, z_off)
         for point in normalized_face:
-            print("point", point)
             if point.x < bound_lo.x: bound_lo.x = float(point.x)
             if point.y < bound_lo.y: bound_lo.y = float(point.y)
             if point.x > bound_hi.x: bound_hi.x = float(point.x)
@@ -1184,7 +1181,7 @@ def test_sphere():
 
 def test_cylinder():
     c = cube(4, center=True).color("blue")
-    t1 = cylinder(h=50, r=[15, 10], ends=EdgeTreatment(round=4))
+    t1 = cylinder(h=50, r=[10, 15], ends=EdgeTreatment(round=4))
     t1 |= c.attach(t1, where="right")
 
     t2 = cylinder(h=50, r=[15, 10], ends=EdgeTreatment(round=-4)).right(35)
@@ -1200,14 +1197,16 @@ def test_prisnoid():
     t1 = prisnoid(40, 20, 6, 4, 25, shift=[-5, -5])
     t1 |= c.attach(t1, where=RT)
     t1 |= c.attach(t1, where=TP)
+
     faces = t1.faces()
     t2 = polyhedron(points=faces.points, faces=faces.faces).wireframe().fwd(45)
 
     return t1 | t2
 
 def test_rotate_sweep():
+    '''
     @dataclass()
-    class ShapeContextExample():
+    class SweepContextExample():
         """
         example shape context for sweep
         Note: The shape callback to sweep must return the same number of
@@ -1216,15 +1215,22 @@ def test_rotate_sweep():
 
         radius : float  = 5
         fn     : int    = 40
+    '''
 
     def sweepShapeExample(context):
+        if not hasattr(context, "radius"):
+            # This is a little dirty ;)
+            # I'm hijacking the context that rotate_sweep makes for itelf
+            # and stashing my own parameters in it.
+            context.radius = 5
+            context.fn     = 40
+
         c = circle(r=context.radius, fn=context.fn).right(20)
         shape = c.mesh().points
         context.radius += fs / 60
         return shape
 
-    context = ShapeContextExample(radius=2)
-    s = rotate_sweep(sweepShapeExample, shapeContext=context, angle=360)
+    s = rotate_sweep(sweepShapeExample, angle=360)
     t1 = polyhedron(points=s[0], faces=s[1])
 
     c = circle(d=10, fn=40).right(20)
@@ -1252,32 +1258,25 @@ def test_sweep():
     sweep usage examples
     """
     @dataclass()
-    class TransformContextExample():
+    class SweepContextExample():
         """
         Example transform context for sweep
         """
+        # Context for the transform
+        index           : int    = 0
+        stop            : int    = 25
+        sweep_radius    : float  = 75
+        angle           : float  = np.radians(40)
 
-        index  : int    = 0
-        stop   : int    = 25
-        radius : float  = 75
-        angle  : float  = np.radians(40)
-
-    @dataclass()
-    class ShapeContextExample():
-        """
-        example shape context for sweep
-        Note: The shape callback to sweep must return the same number of
-              points for each call. See fn below...
-        """
-
-        radius : float  = 5
-        fn     : int    = 40
+        # Context for the shape
+        radius          : float  = 5
+        fn              : int    = 40
 
     def sweepTransformExample(context):
         if context.index > context.stop:
             return None
 
-        m = (Affine.around_center(cp=[0, context.radius, 0],
+        m = (Affine.around_center(cp=[0, context.sweep_radius, 0],
                                   m=Affine.xrot3d(-context.angle * context.index / 25)) @
              Affine.scale3d([1 + context.index / 25, 2 - context.index / 25, 1]))
         context.index += 1
@@ -1290,9 +1289,8 @@ def test_sweep():
         return shape
 
     # sweep with transform callback and shape callback
-    xcontext = TransformContextExample()
-    scontext = ShapeContextExample()
-    s = sweep(sweepShapeExample, sweepTransformExample, shapeContext=scontext, transformContext=xcontext)
+    context = SweepContextExample()
+    s = sweep(sweepShapeExample, sweepTransformExample, context=context)
 
     t1 = polyhedron(points=s[0], faces=s[1]).fwd(20)
 
@@ -1316,8 +1314,8 @@ def run_tests():
     u = test_sweep()
     u |= test_path_sweep().left(50)
     u |= test_rotate_sweep().right(50)
-    u |= test_prisnoid().fwd(80)
-    u |= test_cylinder().back(80)
+    u |= test_prisnoid().fwd(50)
+    u |= test_cylinder().back(60)
     u |= test_sphere().right(50).up(50)
     u.show()
 
