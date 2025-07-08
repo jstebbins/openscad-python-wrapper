@@ -408,6 +408,12 @@ class Vector(Matrix):
                 self[1] if name == "y" else 
                 self[2] if name == "z" else super().__getattr__(self, name))
 
+    def __getitem__(self, key):
+        return self.matrix[key]
+
+    def __setitem__(self, key, val):
+        self.matrix[key] = val
+
 class Points(Matrix):
     """
     Points are a stack of single dimension Matricies, so also need some special treatment
