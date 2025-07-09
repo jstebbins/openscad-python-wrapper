@@ -527,6 +527,46 @@ class Object():
             self.face_cache = Faces(self)
         return self.face_cache
 
+    def justify(self, where, how=ATTACH_LARGE, inside=False):
+        """
+        Called on child object to align an attachment point to it's current origin
+
+        where   - A reference to a 'face' of the parent. Options are:
+                    A face retrieved from class Faces
+                    A vector that will trigger a search for a face
+                    A named attachment hook
+        how     - Specifices the search algorithm to use when 'where' is a vector.
+                  Options are currently:
+                    Object.ATTACH_NORM  - selects a face whose normal vector is closest to given vector
+                    Object.ATTACH_LARGE - selects a face whose area is 1/2 std deviation larger than
+                                          the mean and whose normal points in roughly the right direction
+
+        E.g. using the vector 'RT' will lookup the face whose normal vector is the
+        "closest match" to 'RT' (i.e. the right face).
+
+        Note: Creation of face metrics that are necessary for attachments based on faces can be
+              slow when detail is high. Using named attachment hooks will result in the fastest
+              rendering objects since they don't rely on face metrics.
+        """
+        if isinstance(where, str):
+            m = self.hooks[where]
+        else:
+            faces        = self.faces()
+            face_index   = faces.find_face(where, how);
+            m = faces.get_matrix(face_index)
+
+        m = m.inv()
+        if not inside:
+            m = Affine.xrot3d(np.pi) @ m
+
+        obj = Object(self)
+        origin  = Matrix(self.oscad_obj.origin, affine=True)
+
+        m = origin @ m @ origin.inv()
+        obj.oscad_obj = obj.oscad_obj.multmatrix(m.list())
+
+        return obj
+
     def attach(self, parent, where, how=ATTACH_LARGE):
         """
         Called on child object to attach to a parent at the position specifiec by face
@@ -546,7 +586,7 @@ class Object():
         "closest match" to 'RT' (i.e. the right face).
 
         Note: Creation of face metrics that are necessary for attachments based on faces can be
-              slow when detail is high. Using named attachment hooks will result in the fastest 
+              slow when detail is high. Using named attachment hooks will result in the fastest
               rendering objects since they don't rely on face metrics.
         """
 
@@ -555,7 +595,6 @@ class Object():
         else:
             parent_faces        = parent.faces()
             parent_face_index   = parent_faces.find_face(where, how);
-            parent_faceMetrics  = parent_faces.faceMetrics[parent_face_index];
             m = parent_faces.get_matrix(parent_face_index)
 
         origin  = Matrix(parent.oscad_obj.origin, affine=True) @ m

@@ -371,7 +371,7 @@ class Vector(Matrix):
     def append(self, val):
         np.append(self.matrix, val, axis=0)
 
-    def __rmul__(self, x):
+    def __mul__(self, x):
         C = type(self)
         return C(self.matrix * x, affine=self.is_affine)
 

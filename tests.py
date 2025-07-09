@@ -138,6 +138,15 @@ def test_sweep():
 
     return t1 | t2
 
+def test_justify():
+    t1 = cube(20, center=True).color("green")
+    c1 = cube(10, center=True)
+    c2 = cube(5, center=True).color("blue")
+    c1 |= c2.attach(c1, "top")
+    t1 |= c1.attach(t1, "right").justify("left")
+
+    return t1
+
 def run_tests():
     print("Testing...")
     u = test_sweep()
@@ -146,6 +155,7 @@ def run_tests():
     u |= test_prisnoid().fwd(50)
     u |= test_cylinder().back(60)
     u |= test_sphere().right(50).up(50)
+    u |= test_justify().down(40)
     u.show()
 
 if __name__ == "__main__":
