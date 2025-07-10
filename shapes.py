@@ -144,36 +144,39 @@ def cyl_path(r, l, ends=None):
     r           = tup(r, 2)
     ends        = tup(ends, 2)
 
-    vang = np.atan2((r[0] - r[1]) / 2, l)
+    e0 = EdgeTreatment()
+    e1 = EdgeTreatment()
     if ends is not None:
-        e = ends[0]
-        if e.chamf is not None:
-            chang0 = radians(e.chang) if e.chang is not None else RAD_45 + np.sign(e.chamf) * vang
-            chamf0 = (e.chamf,
-                      np.fabs(law_of_sines(a=e.chamf, A=RAD_180 - chang0 - (RAD_90 - np.sign(e.chamf) * vang), B=chang0)))
-        if e.round is not None:
-            roundx0 = e.round / np.tan(RAD_45 - vang) if e.round >= 0 else e.round / np.tan(RAD_45 + vang)
-        e = ends[1]
-        if e.chamf is not None:
-            chang1 = radians(e.chang) if e.chang is not None else RAD_45 - np.sign(e.chamf) * vang
-            chamf1 = (e.chamf,
-                      np.fabs(law_of_sines(a=e.chamf, A=RAD_180 - chang1 - (RAD_90 + np.sign(e.chamf) * vang), B=chang1)))
-        if e.round is not None:
-            roundx1 = e.round / np.tan(RAD_45 + vang) if e.round >= 0 else e.round / np.tan(RAD_45 - vang)
+        if ends[0] is not None:
+            e0 = ends[0]
+        if ends[1] is not None:
+            e1 = ends[1]
+
+    vang = np.atan2((r[0] - r[1]) / 2, l)
+    if e0.chamf is not None:
+        chang0 = radians(e.chang) if e0.chang is not None else RAD_45 + np.sign(e0.chamf) * vang
+        chamf0 = (e0.chamf,
+                  np.fabs(law_of_sines(a=e0.chamf, A=RAD_180 - chang0 - (RAD_90 - np.sign(e0.chamf) * vang), B=chang0)))
+    if e0.round is not None:
+        roundx0 = e0.round / np.tan(RAD_45 - vang) if e0.round >= 0 else e0.round / np.tan(RAD_45 + vang)
+    if e1.chamf is not None:
+        chang1 = radians(e1.chang) if e1.chang is not None else RAD_45 - np.sign(e1.chamf) * vang
+        chamf1 = (e1.chamf,
+                  np.fabs(law_of_sines(a=e1.chamf, A=RAD_180 - chang1 - (RAD_90 + np.sign(e1.chamf) * vang), B=chang1)))
+    if e1.round is not None:
+        roundx1 = e1.round / np.tan(RAD_45 + vang) if e1.round >= 0 else e1.round / np.tan(RAD_45 - vang)
 
     pre  = [[0, -l / 2]]
     post = [[0,  l / 2]]
-    if ends is None:
-        bot = Points(val=[[r[0], -l / 2]]).affine()
-    elif ends[0].round is not None:
-        bot = arc(r=np.fabs(ends[0].round),
+    if e0.round is not None:
+        bot = arc(r=np.fabs(e0.round),
                   corner=[
                             [r[0] - 2 * roundx0,    -l / 2],
                             [r[0],                  -l / 2],
                             [r[1],                   l / 2]
                          ]
         )
-    elif ends[0].chamf is not None:
+    elif e0.chamf is not None:
         d = polar_to_xy(chamf0[1], RAD_90 + vang)
         bot = Points(
             val = [
@@ -182,19 +185,17 @@ def cyl_path(r, l, ends=None):
               ]
         ).affine()
     else:
-        assert False, f"Invalid end treatment specified {ends[0]}"
+        bot = Points(val=[[r[0], -l / 2]]).affine()
 
-    if ends is None:
-        top = Points(val=[[r[1], l / 2]]).affine()
-    elif ends[1].round is not None:
-        top = arc(r=np.fabs(ends[1].round),
+    if e1.round is not None:
+        top = arc(r=np.fabs(e1.round),
                   corner=[
                             [r[0],                  -l / 2],
                             [r[1],                   l / 2],
                             [r[1] - 2 * roundx1,     l / 2],
                          ]
         )
-    elif ends[1].chamf is not None:
+    elif e1.chamf is not None:
         d = polar_to_xy(chamf1[1], RAD_270 + vang)
         top = Points(
             val = [
@@ -203,7 +204,7 @@ def cyl_path(r, l, ends=None):
               ]
         ).affine()
     else:
-        assert False, f"Invalid end treatment specified {ends[1]}"
+        top = Points(val=[[r[1], l / 2]]).affine()
 
     return Points.concat_init([pre, bot, top, post])
 
@@ -305,7 +306,7 @@ class Object():
 
     once = False    # Gets set after one-time initializations are done
 
-    def __init__(self, object=None):
+    def __init__(self):
         global fn, fa, fs
 
         if not Object.once:
@@ -316,11 +317,16 @@ class Object():
         self.oscad_obj      = None
         self.face_cache     = None
         self.hooks          = dict()
-        if object is not None:
-            self.name           = object.name
-            self.oscad_obj      = object.oscad_obj
-            self.face_cache     = object.face_cache
-            self.hooks          = object.hooks
+        self.tags           = set()
+        self.inside         = False
+
+    def clone(self, object):
+        self.name           = object.name
+        self.oscad_obj      = object.oscad_obj
+        self.face_cache     = object.face_cache
+        self.hooks          = object.hooks
+        self.tags           = object.tags
+        self.inside         = object.inside
 
     def __setattr__(self, attr, value):
         """
@@ -350,6 +356,45 @@ class Object():
         else:
             assert False, f"Object '{self.name}' has no attribute '{attr}'"
 
+    def get_oscad_obj_list(*args):
+        oscad_objs = []
+        for arg in args:
+            if isinstance(arg, list):
+                oscad_objs.extend([obj.oscad_obj for obj in arg])
+            else:
+                oscad_objs.append(arg.oscad_obj)
+        return oscad_objs
+
+    def difference(self, *args):
+        """
+        Difference a list of objects from self
+        """
+        oscad_objs = Object.get_oscad_obj_list(*args)
+        C = type(self)
+        res = C.copy(self)
+        res.oscad_obj = res.oscad_obj.difference(oscad_objs)
+        return res
+
+    def union(self, *args):
+        """
+        Union a list of objects from self
+        """
+        oscad_objs = Object.get_oscad_obj_list(*args)
+        C = type(self)
+        res = C.copy(self)
+        res.oscad_obj = res.oscad_obj.union(oscad_objs)
+        return res
+
+    def intersection(self, *args):
+        """
+        Union a list of objects from self
+        """
+        oscad_objs = Object.get_oscad_obj_list(*args)
+        C = type(self)
+        res = C.copy(self)
+        res.oscad_obj = res.oscad_obj.intersection(oscad_objs)
+        return res
+
     def dir_oscad_obj(self, msg=None):
         """
         Helper to show the currently available attributes available in OpenSCAD Python objects.
@@ -367,17 +412,20 @@ class Object():
         Unfortunately, there does not appear to be a catch-all method of handling
         operator overload like there is for method attributes
         """
-        res = Object(self)
+        C = type(self)
+        res = C.copy(self)
         res.oscad_obj -= other.oscad_obj
         res.name = f"{self.name} - ({other.name})"
         return res
     def __add__(self, other):
-        res = Object(self)
+        C = type(self)
+        res = C.copy(self)
         res.oscad_obj += other.oscad_obj
         res.name = f"{self.name} + ({other.name})"
         return res
     def __or__(self, other):
-        res = Object(self)
+        C = type(self)
+        res = C.copy(self)
         res.oscad_obj |= other.oscad_obj
         res.name = f"{self.name} | ({other.name})"
         return res
@@ -470,23 +518,43 @@ class Object():
             return Mesh(points=Points(mesh[0]), faces=None)
 
     def translate(self, v):
-        res = Object(self)
+        C = type(self)
+        res = C.copy(self)
 
         # v may be a Vector, make it compatible with OpenSCAD
-        res.oscad_obj = res.oscad_obj.translate(list(v))
+        if res.oscad_obj is not None:
+            res.oscad_obj = res.oscad_obj.translate(list(v))
+        elif hasattr(res, "origin"):
+            m = Affine.trans3d(v)
+            res.origin = m @ res.origin
 
         return res
 
     def rotate(self, v):
-        res = Object(self)
+        C = type(self)
+        res = C.copy(self)
 
         # v may be a Vector, make it compatible with OpenSCAD
-        res.oscad_obj = res.oscad_obj.rotate(list(v))
+        if res.oscad_obj is not None:
+            res.oscad_obj = res.oscad_obj.rotate(list(v))
+        elif hasattr(res, "origin"):
+            m = Affine.rot3d(v)
+            res.origin = m @ res.origin
 
         return res
 
+    def xrot(self, v):
+        return self.rotate([v, 0, 0])
+
+    def yrot(self, v):
+        return self.rotate([0, v, 0])
+
+    def zrot(self, v):
+        return self.rotate([0, 0, v])
+
     def color(self, c):
-        res = Object(self)
+        C = type(self)
+        res = C.copy(self)
 
         res.oscad_obj = res.oscad_obj.color(c)
 
@@ -548,6 +616,10 @@ class Object():
               slow when detail is high. Using named attachment hooks will result in the fastest
               rendering objects since they don't rely on face metrics.
         """
+
+        if inside is not None:
+            self.inside = inside
+
         if isinstance(where, str):
             m = self.hooks[where]
         else:
@@ -555,21 +627,26 @@ class Object():
             face_index   = faces.find_face(where, how);
             m = faces.get_matrix(face_index)
 
-        m = m.inv()
-        if not inside:
-            m = Affine.xrot3d(np.pi) @ m
+        m = m.inv() * -1
+        m[3][3] = 1
+        #if not self.inside:
+        #    m = Affine.xrot3d(np.pi) @ m
 
-        obj = Object(self)
-        origin  = Matrix(self.oscad_obj.origin, affine=True)
+        C = type(self)
+        obj = C.copy(self)
+        origin  = Matrix(self.origin, affine=True)
 
         m = origin @ m @ origin.inv()
-        obj.oscad_obj = obj.oscad_obj.multmatrix(m.list())
+        if obj.oscad_obj is not None:
+            obj.oscad_obj = obj.oscad_obj.multmatrix(m.list())
+        elif hasattr(obj, "origin"):
+            obj.origin = m @ obj.origin
 
         return obj
 
-    def attach(self, parent, where, how=ATTACH_LARGE):
+    def attach(self, parent, where, justify=None, how=ATTACH_LARGE, inside=False):
         """
-        Called on child object to attach to a parent at the position specifiec by face
+        Called on child object to attach to a parent at the position specified by face
 
         parent  - The parent object being linked to
         where   - A reference to a 'face' of the parent. Options are:
@@ -590,6 +667,9 @@ class Object():
               rendering objects since they don't rely on face metrics.
         """
 
+        if inside is not None:
+            self.inside = inside
+
         if isinstance(where, str):
             m = parent.hooks[where]
         else:
@@ -597,12 +677,81 @@ class Object():
             parent_face_index   = parent_faces.find_face(where, how);
             m = parent_faces.get_matrix(parent_face_index)
 
-        origin  = Matrix(parent.oscad_obj.origin, affine=True) @ m
+        if self.inside:
+            m = m @ Affine.xrot3d(np.pi)
+        origin  = Matrix(parent.origin, affine=True) @ m
 
-        obj = Object(self)
-        obj.oscad_obj = self.oscad_obj.align(origin.list())
+        C = type(self)
+        obj = C.copy(self)
+        if obj.oscad_obj is not None:
+            obj.oscad_obj = self.oscad_obj.multmatrix(origin.list())
+        elif hasattr(obj, "origin"):
+            obj.origin = origin @ obj.origin
+
+        if justify is not None:
+            return obj.justify(where=justify, how=how, inside=inside)
 
         return obj
+
+    def tag(self, tag):
+        self.tags.add(tag)
+
+    def has_tag(self, tag):
+        return tag in self.tags
+
+    @classmethod
+    def copy(cls, object):
+        c = cls.__new__(cls)
+        c.clone(object)
+        return c
+
+class Null(Object):
+    def __init__(self, object=None):
+        super().__init__();
+
+        self.origin = Matrix([[1,0,0],[0,1,0],[0,0,1]]).affine()
+        self.name   = "Null"
+
+        hook_defs = [
+            ["front", [ 90,   0, 0], 0],
+            ["back",  [-90,   0, 0], 0],
+            ["right", [  0,  90, 0], 0],
+            ["left",  [  0, -90, 0], 0],
+            ["top",   [  0,   0, 0], 0],
+            ["bottom",[180,   0, 0], 0],
+        ]
+        for hook in hook_defs:
+            m = Affine.rot3d(np.radians(hook[1])) @ Affine.trans3d([0, 0, hook[2]])
+            self.attachment_hook(hook[0], m)
+
+    def clone(self, object):
+        super().clone(object)
+        self.origin = object.origin
+
+    def __getattr__(self, attr):
+        """
+        Prevent passing of attributs to OpenSCAD for the null object
+        """
+        #assert False, f"Object '{self.name}' has no attribute '{attr}'"
+
+    def __setattr__(self, attr, value):
+        self.__dict__[attr] = value
+
+def union(*args):
+    """
+    Union a list of objects from self
+    """
+    oscad_objs = Object.get_oscad_obj_list(*args)
+    res = Object()
+    res.oscad_obj = res.oscad_obj.union(oscad_objs)
+    return res
+
+def show(*args):
+    """
+    Show a list of objects
+    """
+    oscad_objs = Object.get_oscad_obj_list(*args)
+    scad.show(oscad_objs)
 
 class cube(Object):
     """
@@ -618,7 +767,7 @@ class cube(Object):
               corner at the current origin
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: list, **kwargs: dict):
         super().__init__()
 
         defaults = {"size" : 10, "center" : True}
@@ -695,12 +844,16 @@ class cylinder(Object):
     def __init__(self, *args, **kwargs):
         super().__init__()
 
-        defaults = {"r" : None, "h" : None, "ends" : None, "d" : None}
-        [r, h, ends, d], kwargs = parseArgs(defaults, *args, **kwargs)
+        defaults = {"r" : None, "h" : None, "l" : None, "ends" : None, "d" : None}
+        [r, h, l, ends, d], kwargs = parseArgs(defaults, *args, **kwargs)
 
+        if l is not None:
+            h = l
         if d is not None:
             d           = tup(r, 2)
             r           = [d[0] / 2, d[1] / 2]
+
+        assert r is not None and h is not None, f"cylinder: Invalid parameters"
 
         r               = tup(r, 2)
         self.name       = "Cylinder"
@@ -826,6 +979,7 @@ class polygon(Object):
 
 class text(Object):
     def __init__(self, *args, **kwargs):
+        super().__init__()
 
         defaults = {"text" : "", "size" : 10}
         [text, size], kwargs = parseArgs(defaults, *args, **kwargs)
@@ -922,6 +1076,8 @@ class Faces():
         for ii in range(len(faces)):
             points = self.get_points(faces[ii])
             faceMetrics[ii].normal = vector_axis(unit(points[2] - points[1]), unit(points[0] - points[1]))
+            if faceMetrics[ii].normal is None:
+                xx
 
     def get_areas(self, faces, faceMetrics):
         for ii in range(len(faces)):
@@ -1205,4 +1361,116 @@ class Faces():
                 return self.large(key)
         if isinstance(key, int):
             return key
+
+class Composition(Null):
+    """
+    A composition is a kind of virtual object with delayed instantiation.
+    Composition objects are composed with a parent object and other
+    composition objects using Composition.compose(). At the time of
+    composition, their objects are created and any attachments/justifications
+    are resolved.
+
+    Compose is useful when you have multiple overlapping objects where you
+    would like the voids of an object to create voids in the other objects.
+    """
+
+    # Operations
+    PASS        = 0
+    UNION       = 1
+    DIFF        = 2
+    INTERSECT   = 3
+
+    @dataclass()
+    class Operation():
+        op  : str   = None
+        tag : str   = None
+
+    def __init__(self):
+        super().__init__()
+
+        self.name = "Composition"
+
+        # The objects that will be composed
+        self.objects = []
+        # Compositions may be added together and treated as one
+        self.compositions = []
+
+    def clone(self, object):
+        super().clone(object)
+        self.objects        = object.objects
+        self.compositions   = object.objects
+
+    def build(self):
+        pass
+
+    def append(self, other):
+        self.compositions.append(other)
+        return self
+
+    def __add__(self, other):
+        comp = Composition(self)
+        comp.compositions.append(other)
+        return comp
+
+    '''
+    def attach(self, parent, where, how=Object.ATTACH_LARGE):
+        """
+        Called on child composition to attach to a parent at the position specified by face
+
+        parent  - The parent object being linked to
+        where   - A reference to a 'face' of the parent. Options are:
+                    A face retrieved from class Faces
+                    A vector that will trigger a search for a face
+                    A named attachment hook
+        how     - Specifices the search algorithm to use when 'where' is a vector.
+                  Options are currently:
+                    Object.ATTACH_NORM  - selects a face whose normal vector is closest to given vector
+                    Object.ATTACH_LARGE - selects a face whose area is 1/2 std deviation larger than
+                                          the mean and whose normal points in roughly the right direction
+
+        E.g. using the vector 'RT' will lookup the face whose normal vector is the
+        "closest match" to 'RT' (i.e. the right face).
+
+        Note: Creation of face metrics that are necessary for attachments based on faces can be
+              slow when detail is high. Using named attachment hooks will result in the fastest
+              rendering objects since they don't rely on face metrics.
+        """
+
+        self.attach_parent = parent
+        self.attach_where  = where
+        self.attach_how    = how
+
+        return self
+    '''
+
+    def find_tagged_objects(self, tag):
+        if tag is None: return None
+        return [obj for obj in self.objects if obj.has_tag(tag)]
+
+    def do_op(self, left, right, op):
+        if op == self.PASS:
+            return right if left is None else left
+        if op == self.UNION:
+            return left.union(right)
+        if op == self.DIFF:
+            return left.difference(right)
+        if op == self.INTERSECT:
+            return left.intersection(right)
+
+    def compose(self, parent, operations):
+        """
+        Recursively build and compose compositions
+        """
+        self.build()
+        left = parent
+        for op in operations:
+            right = self.find_tagged_objects(op.tag)
+            if right is not None and len(right) > 0:
+                left = self.do_op(left, right, op.op)
+
+        # compose any merged compositions
+        for comp in self.compositions:
+            left = comp.compose(left, operations)
+
+        return left
 

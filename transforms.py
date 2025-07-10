@@ -260,6 +260,9 @@ class Matrix():
 
     def __truediv__(self, x):
         C = type(self)
+        if x != x or x == 0:
+            print("DIV bad", x)
+            xx
         return C(self.matrix / x, affine=self.is_affine)
 
     def __mul__(self, x):
@@ -558,10 +561,14 @@ def mean(val):
     return sum(v for v in val) / len(val)
 
 def norm(val):
-    return np.linalg.norm(val)
+    n = np.linalg.norm(val)
+    if n != n:
+        n = 1
+    return n
 
 def unit(val):
-    u = val / norm(val)
+    if norm(val) == 0:
+        return val
     return val / norm(val)
 
 def cross3d(a, b):
@@ -578,8 +585,8 @@ def posmod(x, m):
 
 def vector_axis(v1, v2):
     eps = 1e-6
-    w1 = point3d(v1 / norm(v1))
-    w2 = point3d(v2 / norm(v2))
+    w1 = point3d(unit(v1))
+    w2 = point3d(unit(v2))
     if norm(w1 - w2) > eps and norm(w1 + w2) > eps:
         w3 = w2
     elif norm(w2.abs() - UP) > eps:

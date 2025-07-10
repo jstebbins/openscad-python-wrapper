@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from sweep import *
 
 fn = None       
-fa = 3          
-fs = 3  
+fa = 3
+fs = 3
 
 def test_sphere():
     c = cube(4, center=True).color("blue")
@@ -147,16 +147,98 @@ def test_justify():
 
     return t1
 
+def test_composition():
+    class Tube(Composition):
+        def __init__(self):
+            super().__init__()
+
+        def build(self):
+            """
+            Build the object.
+
+            Called by Composition.compose()
+            """
+
+            l       = 100
+            r_in    = 15
+            r_out   = 20
+
+            # Body
+            c1 = cylinder(l=l, r=r_out).attach(self, where="bottom", justify="bottom")
+
+            cu = cube(200, center=True).right(15).fwd(15).up(15)
+            c2 = cylinder(l=l+0.2, r=r_in).down(.1).attach(c1, "bottom", justify="bottom", inside=True)
+
+            # Create a tube that is a difference of the above
+            # Note that when we punch the tube through the enclosure, we will
+            # need to compose both the tube and the void with the enclosure
+            # in order to add the tube and make the hole
+            t = c1 - c2
+
+            # Now tag our components for use with compose()
+            t.tag("keep")
+            c2.tag("remove")
+            cu.tag("remove")
+
+            self.objects    = [t, cu, c2]
+
+        def compose(self, parent, operations=None):
+            if operations is None:
+                # Default operations for this composition
+                operations = [
+                    Composition.Operation(tag="remove", op=self.DIFF),
+                    Composition.Operation(tag="keep",   op=self.UNION)
+                ]
+            return super().compose(parent, operations)
+
+    t1 = cube(200, center=True)
+
+    p = Tube()
+    p = p.attach(t1, "left")
+    t1 = p.compose(t1)
+
+    return t1
+
+def test_xxx():
+    cu1 = cube(200, center=True)
+    cu2 = cube(200, center=True).right(15).fwd(15).up(15)
+    t1 = cu1 - cu2
+
+    cy1 = cylinder(l=110, r=20).attach(t1, "left", justify="bottom", inside=True)
+    cy2 = cylinder(l=110+0.2, r=15).down(.1).attach(cy1, "bottom", justify="bottom", inside=True)
+
+    tu = cy1 - cy2
+    #tu.show()
+    t1 = t1.difference(cy2)
+    t1 = t1.union(tu)
+
+    return t1
+
+
+def test_attach():
+    c1 = cube(30, center=True).rotate([0, 0, 0])
+    c2 = cube([10, 10, 34], center=True).color("blue").attach(c1, where="bottom", justify="bottom", inside=True)
+    t1 = c1 | c2
+
+    #t1 = cube(5).fwd(5).xrot(-90)
+    return t1
+
+
 def run_tests():
+    all = False
     print("Testing...")
-    u = test_sweep()
-    u |= test_path_sweep().left(50)
-    u |= test_rotate_sweep().right(50)
-    u |= test_prisnoid().fwd(50)
-    u |= test_cylinder().back(60)
-    u |= test_sphere().right(50).up(50)
-    u |= test_justify().down(40)
-    u.show()
+    u = []
+    if all: u.append( test_sweep() )
+    if all: u.append( test_path_sweep().left(50) )
+    if all: u.append( test_rotate_sweep().right(50) )
+    if all: u.append( test_prisnoid().fwd(50) )
+    if all: u.append( test_cylinder().back(60) )
+    if all: u.append( test_sphere().right(50).up(50) )
+    if all: u.append( test_justify().down(40) )
+    u.append( test_composition() )
+    #u.append( test_attach() )
+    #u.append( test_xxx() )
+    show(u)
 
 if __name__ == "__main__":
     run_tests()
