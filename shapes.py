@@ -318,7 +318,6 @@ class Object():
         self.face_cache     = None
         self.hooks          = dict()
         self.tags           = set()
-        self.inside         = False
 
     def clone(self, object):
         self.name           = object.name
@@ -326,7 +325,6 @@ class Object():
         self.face_cache     = object.face_cache
         self.hooks          = object.hooks
         self.tags           = object.tags
-        self.inside         = object.inside
 
     def __setattr__(self, attr, value):
         """
@@ -595,7 +593,7 @@ class Object():
             self.face_cache = Faces(self)
         return self.face_cache
 
-    def justify(self, where, how=ATTACH_LARGE, inside=False):
+    def justify(self, where, how=ATTACH_LARGE):
         """
         Called on child object to align an attachment point to it's current origin
 
@@ -617,9 +615,6 @@ class Object():
               rendering objects since they don't rely on face metrics.
         """
 
-        if inside is not None:
-            self.inside = inside
-
         if isinstance(where, str):
             m = self.hooks[where]
         else:
@@ -629,8 +624,6 @@ class Object():
 
         m = m.inv() * -1
         m[3][3] = 1
-        #if not self.inside:
-        #    m = Affine.xrot3d(np.pi) @ m
 
         C = type(self)
         obj = C.copy(self)
@@ -667,9 +660,6 @@ class Object():
               rendering objects since they don't rely on face metrics.
         """
 
-        if inside is not None:
-            self.inside = inside
-
         if isinstance(where, str):
             m = parent.hooks[where]
         else:
@@ -677,7 +667,7 @@ class Object():
             parent_face_index   = parent_faces.find_face(where, how);
             m = parent_faces.get_matrix(parent_face_index)
 
-        if self.inside:
+        if inside:
             m = m @ Affine.xrot3d(np.pi)
         origin  = Matrix(parent.origin, affine=True) @ m
 
@@ -689,7 +679,7 @@ class Object():
             obj.origin = origin @ obj.origin
 
         if justify is not None:
-            return obj.justify(where=justify, how=how, inside=inside)
+            return obj.justify(where=justify, how=how)
 
         return obj
 
@@ -706,6 +696,15 @@ class Object():
         return c
 
 class Null(Object):
+    """
+    A naked singularity.
+
+    Null has an origin, so thus has a position and orientation. But it has no
+    size and no faces. Null may be attached to other objects, but other objects
+    may attach to Null only through a named attachment hook. Null has some
+    default named attachment hooks that permit attaching and orienting objects
+    at it's origin.
+    """
     def __init__(self, object=None):
         super().__init__();
 
@@ -736,22 +735,6 @@ class Null(Object):
 
     def __setattr__(self, attr, value):
         self.__dict__[attr] = value
-
-def union(*args):
-    """
-    Union a list of objects from self
-    """
-    oscad_objs = Object.get_oscad_obj_list(*args)
-    res = Object()
-    res.oscad_obj = res.oscad_obj.union(oscad_objs)
-    return res
-
-def show(*args):
-    """
-    Show a list of objects
-    """
-    oscad_objs = Object.get_oscad_obj_list(*args)
-    scad.show(oscad_objs)
 
 class cube(Object):
     """
@@ -1362,16 +1345,46 @@ class Faces():
         if isinstance(key, int):
             return key
 
+@dataclass()
+class CompositionOperation():
+    """
+    An operation.
+
+    The left hand operand is either the 'parent' passed in to Composition.compose()
+    or it is the result from a previous operation.
+
+    The right hand operand is a list of objects that have the tag specified
+    in the CompositionOperation().
+
+    Currently supported operations are:
+    PASS        -   Essentially a No-Op, presumes one of the operands is None
+    UNION       -   Union left operand with right hand list
+    DIFF        -   Diff the right hand list from the left operand
+    INTERSECT   -   Produce the intersection of all operands
+    """
+
+    op  : str   = None
+    tag : str   = None
+
 class Composition(Null):
     """
     A composition is a kind of virtual object with delayed instantiation.
     Composition objects are composed with a parent object and other
-    composition objects using Composition.compose(). At the time of
+    composition objects using 'Composition.compose()'. At the time of
     composition, their objects are created and any attachments/justifications
     are resolved.
 
+    Composition is a subclass of Null, so inherits it's 'origin' attribute.
+    A composition may be attached *to* other objects and it's position and
+    orientation may be changed prior to 'Composition.compose()'. But generally
+    Composition objects are not meant to be the target of an attachment. Prior
+    to 'Composition.compose()' a Composition has no faces and it acts like a
+    point sized object. I.e.  it has position, orientation, but no size.
+
     Compose is useful when you have multiple overlapping objects where you
     would like the voids of an object to create voids in the other objects.
+
+    An example subclass implementation of Composition is in test.py
     """
 
     # Operations
@@ -1380,10 +1393,18 @@ class Composition(Null):
     DIFF        = 2
     INTERSECT   = 3
 
-    @dataclass()
-    class Operation():
-        op  : str   = None
-        tag : str   = None
+    """
+    A composition operation that provides a 3 step difference.
+
+    Step 1 - Some objects are unioned together
+    Step 2 - Some objects are removed (differenced) from the union of Step 1
+    Step 3 - Some objects are unioned to the results of Steps 1 & 2
+    """
+    AddRemoveKeep = [
+        CompositionOperation(tag="add",    op=UNION),
+        CompositionOperation(tag="remove", op=DIFF),
+        CompositionOperation(tag="keep",   op=UNION)
+    ]
 
     def __init__(self):
         super().__init__()
@@ -1396,81 +1417,186 @@ class Composition(Null):
         self.compositions = []
 
     def clone(self, object):
+        """
+        Shallow copy a composition.
+        Used by Object.copy()
+        """
         super().clone(object)
         self.objects        = object.objects
         self.compositions   = object.objects
 
     def build(self):
-        pass
+        """
+        build must be implemented by subclasses of Composition
+
+        This will be called by Composition.compose() to instantiate the
+        objects that are about to be composed.
+
+        This is where a Composition's component objects are defined, tagged, and
+        added to the 'objects' list.
+
+        It's also generally a good idea to overload Composition.compose() in the
+        subclass and define your list of CompositionOperations there. Then call
+        super().compose() with those operations.
+
+        In order to position and orient the components of a Composition relative
+        to the world outside the Composition, they should be attached to and positioned
+        relative to 'self' which is the Null object that may be attached to
+        objects outside the Composition.
+        """
+        C = type(self)
+        assert False, "Required build() method missing for class {C}"
 
     def append(self, other):
+        """
+        Append another Composition to this Composition's list of
+        Compositions.
+
+        When you have a collection of Composition objects, you can apply
+        the operations in Composition.compose() in the intended order to
+        all component members of the Compositions by grouping the Compositions
+        with this list.
+
+        E.g. using the AddRemoveKeep Operation:
+        Step 1  -   All objects tagged with 'add' from all Compositions in the list
+                    are unioned together
+        Step 2  -   All objects tagged with 'remove' from all Compositions in the list
+                    are differenced from the result of Step 1
+        Step 3  -   All objects tagged with 'keep' from all Compositions in the list
+                    are unioned with the results of Steps 1 & 2
+
+        other   -   The Composition to append
+
+        Returns self
+        """
+
         self.compositions.append(other)
         return self
 
     def __add__(self, other):
+        """
+        Append another Composition to this Composition's list of
+        Compositions.
+
+        See 'append()'
+
+        other   -   The Composition to append
+
+        Returns a copy of self with the other Composition appended
+        """
+
         comp = Composition(self)
         comp.compositions.append(other)
         return comp
 
-    '''
-    def attach(self, parent, where, how=Object.ATTACH_LARGE):
-        """
-        Called on child composition to attach to a parent at the position specified by face
-
-        parent  - The parent object being linked to
-        where   - A reference to a 'face' of the parent. Options are:
-                    A face retrieved from class Faces
-                    A vector that will trigger a search for a face
-                    A named attachment hook
-        how     - Specifices the search algorithm to use when 'where' is a vector.
-                  Options are currently:
-                    Object.ATTACH_NORM  - selects a face whose normal vector is closest to given vector
-                    Object.ATTACH_LARGE - selects a face whose area is 1/2 std deviation larger than
-                                          the mean and whose normal points in roughly the right direction
-
-        E.g. using the vector 'RT' will lookup the face whose normal vector is the
-        "closest match" to 'RT' (i.e. the right face).
-
-        Note: Creation of face metrics that are necessary for attachments based on faces can be
-              slow when detail is high. Using named attachment hooks will result in the fastest
-              rendering objects since they don't rely on face metrics.
-        """
-
-        self.attach_parent = parent
-        self.attach_where  = where
-        self.attach_how    = how
-
-        return self
-    '''
-
     def find_tagged_objects(self, tag):
+        """
+        Find objects in the Composition list of 'objects' that have
+        the given tag.
+
+        Descends into Compositions linked to this one through 'compositions'
+        to collect all linked objects with the given tag.
+
+        tag     -   The tag to search for
+
+        Returns a list of objects
+        """
         if tag is None: return None
-        return [obj for obj in self.objects if obj.has_tag(tag)]
+
+        self.build()
+        tagged_objs = [obj for obj in self.objects if obj.has_tag(tag)]
+        for composition in self.compositions:
+            tagged_objs.extend(composition.find_tagged_objects(tag))
+        return tagged_objs
 
     def do_op(self, left, right, op):
+        """
+        Perform an operation.
+
+        left    -   An object
+        right   -   A list of objects
+        op      -   The operation to perform.
+                        result = left op right
+                    or in some cases
+                        result = op([left].extend(right))
+        """
         if op == self.PASS:
             return right if left is None else left
         if op == self.UNION:
-            return left.union(right)
+            if left is not None:
+                right.insert(0, left)
+            return union(right)
         if op == self.DIFF:
             return left.difference(right)
         if op == self.INTERSECT:
-            return left.intersection(right)
+            if left is not None:
+                right.insert(0, left)
+            return intersection(right)
 
-    def compose(self, parent, operations):
+    def compose(self, parent=None, operations=None):
         """
         Recursively build and compose compositions
+
+        Compositions that have been linked to this composition through
+        'append()' or '+' are also built and composed using the operations
+        provided.
+
+        parent      -   The composition operations will be applied against
+                        the parent object and the other objects in the
+                        composition.  Parent may be none if the first composition
+                        operation does not require a left hand side (difference)
+
+        operations  -   A list of CompositionOperations(). For each operation, objects
+                        that have the tag associated with the operation are collected
+                        and act as the right hand side of the operation.
         """
-        self.build()
         left = parent
         for op in operations:
             right = self.find_tagged_objects(op.tag)
-            if right is not None and len(right) > 0:
-                left = self.do_op(left, right, op.op)
-
-        # compose any merged compositions
-        for comp in self.compositions:
-            left = comp.compose(left, operations)
+            left  = self.do_op(left, right, op.op)
 
         return left
+
+def difference(*args):
+    """
+    Difference a list of objects
+
+    For some reason, I appear to get a union out of the difference below.
+    Bug... or me? The OpenSCAD code looks a little sus. It appears to
+    be adding only the first item in the list as a child to the node.
+    """
+
+    res = Object()
+    oscad_objs = Object.get_oscad_obj_list(*args)
+    res.oscad_obj = scad.difference(oscad_objs)
+    return res
+
+def intersection(*args):
+    """
+    Produce the intersection a list of objects
+
+    For some reason, I appear to get a union out of the intersection below.
+    Bug... or me? The OpenSCAD code looks a little sus. It appears to
+    be adding only the first item in the list as a child to the node.
+    """
+    res = Object()
+    oscad_objs = Object.get_oscad_obj_list(*args)
+    res.oscad_obj = scad.intersection(oscad_objs)
+    return res
+
+def union(*args):
+    """
+    Union a list of objects
+    """
+    res = Object()
+    oscad_objs = Object.get_oscad_obj_list(*args)
+    res.oscad_obj = scad.union(oscad_objs)
+    return res
+
+def show(*args):
+    """
+    Show a list of objects
+    """
+    oscad_objs = Object.get_oscad_obj_list(*args)
+    scad.show(oscad_objs)
 

@@ -164,9 +164,8 @@ def test_composition():
             r_out   = 20
 
             # Body
-            c1 = cylinder(l=l, r=r_out).attach(self, where="bottom", justify="bottom")
+            c1 = cylinder(l=l, r=r_out).attach(self, where="top", justify="bottom")
 
-            cu = cube(200, center=True).right(15).fwd(15).up(15)
             c2 = cylinder(l=l+0.2, r=r_in).down(.1).attach(c1, "bottom", justify="bottom", inside=True)
 
             # Create a tube that is a difference of the above
@@ -178,23 +177,18 @@ def test_composition():
             # Now tag our components for use with compose()
             t.tag("keep")
             c2.tag("remove")
-            cu.tag("remove")
 
-            self.objects    = [t, cu, c2]
+            self.objects    = [t, c2]
 
         def compose(self, parent, operations=None):
             if operations is None:
                 # Default operations for this composition
-                operations = [
-                    Composition.Operation(tag="remove", op=self.DIFF),
-                    Composition.Operation(tag="keep",   op=self.UNION)
-                ]
+                operations = Composition.AddRemoveKeep
             return super().compose(parent, operations)
 
-    t1 = cube(200, center=True)
+    t1 = cube(200, center=True) - cube([170, 185, 170]).translate([0, -8, 0])
 
-    p = Tube()
-    p = p.attach(t1, "left")
+    p = Tube().attach(t1, "left", inside=True)
     t1 = p.compose(t1)
 
     return t1
@@ -217,15 +211,14 @@ def test_xxx():
 
 def test_attach():
     c1 = cube(30, center=True).rotate([0, 0, 0])
-    c2 = cube([10, 10, 34], center=True).color("blue").attach(c1, where="bottom", justify="bottom", inside=True)
+    c2 = cube([10, 20, 34], center=True).color("blue").up(0).attach(c1, where="bottom", justify="right", inside=True)
     t1 = c1 | c2
 
-    #t1 = cube(5).fwd(5).xrot(-90)
     return t1
 
 
 def run_tests():
-    all = False
+    all = True
     print("Testing...")
     u = []
     if all: u.append( test_sweep() )
@@ -235,7 +228,7 @@ def run_tests():
     if all: u.append( test_cylinder().back(60) )
     if all: u.append( test_sphere().right(50).up(50) )
     if all: u.append( test_justify().down(40) )
-    u.append( test_composition() )
+    #u.append( test_composition() )
     #u.append( test_attach() )
     #u.append( test_xxx() )
     show(u)
