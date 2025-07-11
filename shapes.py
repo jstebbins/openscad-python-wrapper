@@ -994,13 +994,15 @@ class Faces():
         # I want all values *except* FaceMetrics.origin to be independent of the objects
         # current position and orientation.
         self.points         = self.i_origin @ Points(mesh.points)
-        self.faceMetrics    = [FaceMetrics() for _ in range(len(mesh.faces))]
 
-        self.get_normals(mesh.faces, self.faceMetrics)
-        self.get_areas(mesh.faces, self.faceMetrics)
+        self.faces          = self.prune_degenerate(mesh.faces)
+        self.faceMetrics    = [FaceMetrics() for _ in range(len(self.faces))]
+
+        self.get_normals(self.faces, self.faceMetrics)
+        self.get_areas(self.faces, self.faceMetrics)
 
         # Unify adjacent triangles that share a common normal
-        self.faces, deleted = self.unify_faces(mesh.faces, self.faceMetrics)
+        self.faces, deleted = self.unify_faces(self.faces, self.faceMetrics)
         # Eliminate metrics for deleted faces
         self.faceMetrics = [self.faceMetrics[ii] for ii in range(len(self.faceMetrics)) if ii not in deleted]
 
@@ -1015,6 +1017,26 @@ class Faces():
         for fm in self.faceMetrics:
             sosd += (fm.area - self.mean_area) ** 2
         self.deviation_area = np.sqrt(sosd / (len(self.faceMetrics) - 1))
+
+    def prune_degenerate(self, faces):
+        """
+        Remove degenerate faces from the faces list.
+
+        I discovered the cylinder object has a lot of degenerate faces.
+
+        A degenerate face has a zero length side and it's normal is invalid.
+        Invalid normals interfere with unification of faces. So we need
+        to prune these degenerate faces before unify_faces()
+        """
+
+        degenerate = set()
+        for ii in range(len(faces)):
+            points = self.get_points(faces[ii])
+            if (norm(points[0] - points[1]) < eps or
+                norm(points[1] - points[2]) < eps or
+                norm(points[2] - points[0]) < eps):
+                degenerate.add(ii)
+        return [faces[ii]   for ii in range(len(faces)) if ii not in degenerate]
 
     def get_matrix(self, index):
 
@@ -1059,8 +1081,6 @@ class Faces():
         for ii in range(len(faces)):
             points = self.get_points(faces[ii])
             faceMetrics[ii].normal = vector_axis(unit(points[2] - points[1]), unit(points[0] - points[1]))
-            if faceMetrics[ii].normal is None:
-                xx
 
     def get_areas(self, faces, faceMetrics):
         for ii in range(len(faces)):
