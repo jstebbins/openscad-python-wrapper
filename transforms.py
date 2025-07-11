@@ -260,9 +260,6 @@ class Matrix():
 
     def __truediv__(self, x):
         C = type(self)
-        if x != x or x == 0:
-            print("DIV bad", x)
-            xx
         return C(self.matrix / x, affine=self.is_affine)
 
     def __mul__(self, x):
@@ -295,6 +292,9 @@ class Matrix():
 
     def __str__(self):
         return str(f"Matrix: {self.matrix}")
+
+    def __eq__(self, other):
+        return np.array_equal(self.matrix, other.matrix)
 
     def deaffine(self):
         if not self.is_affine:

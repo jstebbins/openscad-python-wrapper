@@ -223,15 +223,17 @@ def line(pt1, pt2, d=1):
     return extrude_from_to(circle, pt1, pt2)
 
 def mesh_edges(mesh):
-    edges = []
-    for face in mesh[1]:
+    points  = mesh.points
+    faces   = mesh.faces
+    edges   = []
+    for face in faces:
         face_edges = []
         final = prev = face[0]
         for pt in face[1:]:
-            edge = [mesh[0][prev], mesh[0][pt]]
+            edge = [points[prev], points[pt]]
             face_edges.append(edge)
             prev = pt
-        edge = [mesh[0][prev], mesh[0][final]]
+        edge = [points[prev], points[final]]
         face_edges.append(edge)
         edges.append(face_edges)
     return edges
@@ -451,6 +453,7 @@ class Object():
         c_0_0 = Object.point_cmp(edge1[0], edge2[0])
         if c_0_0 == 0:
             # edges have a common vertex
+            c_1_1 = Object.point_cmp(edge1[1], edge2[1])
             return Object.point_cmp(edge1[1], edge2[1])
         return c_0_0
 
@@ -479,12 +482,15 @@ class Object():
         edges.sort(key=functools.cmp_to_key(Object.edge_cmp))
 
         # Remove duplicate edges from the list
+        deleted = set()
         prev = edges[0]
+        dd = 0
         for edge in edges[1:]:
             if edge == prev:
-                edges.remove(prev)
+                deleted.add(dd)
             prev = edge
-        return edges
+            dd += 1
+        return [edges[ii] for ii in range(len(edges)) if ii not in deleted]
 
     def wireframe(self):
         """
@@ -496,15 +502,7 @@ class Object():
         fine with an Object that has lots of detail.
         """
 
-        mesh = self.oscad_obj.mesh()
-        edges = self.dedup_mesh(mesh)
-
-        wf = Object()
-        wf.name = f"{self.name} - Wireframe"
-
-        for edge in edges:
-            wf.oscad_obj |= line(edge[0], edge[1])
-
+        wf = wireframe(self)
         return wf
 
     def mesh(self):
@@ -694,6 +692,32 @@ class Object():
         c = cls.__new__(cls)
         c.clone(object)
         return c
+
+class wireframe(Object):
+    def __init__(self, object=None, points=None, faces=None, unify=False):
+        super().__init__();
+
+        if object is not None:
+            self.mesh = object.mesh()
+        elif points is not None and faces is not None:
+            self.mesh.points = Points(points)
+            self.mesh.faces  = faces
+        else:
+            assert False, f"Either 'object' or 'points' and 'faces' must be defined"
+
+        if unify:
+            faces       = Faces(points=self.mesh.points, faces=self.mesh.faces)
+            self.mesh.points = faces.points
+            self.mesh.faces  = faces.faces
+
+        edges = self.dedup_mesh(self.mesh)
+
+        self.name = "Wireframe"
+
+        edge = edges[0]
+        self.oscad_obj = line(edge[0], edge[1])
+        for edge in edges[1:]:
+            self.oscad_obj |= line(edge[0], edge[1])
 
 class Null(Object):
     """
@@ -974,7 +998,7 @@ class Faces():
     """
     Class for dealing with faces in an 'Object' mesh.
     """
-    def __init__(self, object):
+    def __init__(self, object=None, points=None, faces=None):
         """
         Creates a list of 'FaceMetrics' from the faces in an 'Object' mesh
 
@@ -984,18 +1008,22 @@ class Faces():
         object  - The 'Object' to process
         """
 
-        mesh = object.mesh()
+        if object is not None:
+            i_origin = Matrix(val=object.origin, affine=True).inv()
+            mesh = object.mesh()
 
-        # Stash the object origin and inverse transform matrix for use with attachments
-        self.origin = Matrix(affine=True, val=object.origin)
-        self.i_origin = self.origin.inv()
+            # Remap object points to be relative to [0, 0, 0] with no rotation
+            # I want all values *except* FaceMetrics.origin to be independent of the objects
+            # current position and orientation.
+            self.points = i_origin @ Points(mesh.points)
+            self.faces  = mesh.faces
+        elif points is not None and faces is not None:
+            self.points = Points(points)
+            self.faces  = faces
+        else:
+            assert False, f"Either 'object' or 'points' and 'faces' must be defined"
 
-        # Remap object points to be relative to [0, 0, 0] with no rotation
-        # I want all values *except* FaceMetrics.origin to be independent of the objects
-        # current position and orientation.
-        self.points         = self.i_origin @ Points(mesh.points)
-
-        self.faces          = self.prune_degenerate(mesh.faces)
+        self.faces          = self.prune_degenerate(self.faces)
         self.faceMetrics    = [FaceMetrics() for _ in range(len(self.faces))]
 
         self.get_normals(self.faces, self.faceMetrics)

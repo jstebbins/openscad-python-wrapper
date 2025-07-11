@@ -40,11 +40,12 @@ def test_cylinder():
 def test_prisnoid():
     c = cube(4, center=True).color("blue")
     t1 = prisnoid(40, 20, 6, 4, 25, shift=[-5, -5])
+    t2 = wireframe(t1, unify=True).fwd(45)
     t1 |= c.attach(t1, where=RT)
     t1 |= c.attach(t1, where=TP)
 
-    faces = t1.faces()
-    t2 = polyhedron(points=faces.points, faces=faces.faces).wireframe().fwd(45)
+    #faces = t1.faces()
+    #t3 = polyhedron(points=faces.points, faces=faces.faces).fwd(75)
 
     return t1 | t2
 
