@@ -173,7 +173,7 @@ def rotate_sweep(shape, angle=360):
 
 def plot3d(func, x_range, y_range, base=1, context=None):
 
-    minz = maxz = None
+    minz = None
     plot = []
     for y in y_range:
         dx = Points([ [x_range[0], y, 0] ])         # place holder for the base
@@ -182,10 +182,7 @@ def plot3d(func, x_range, y_range, base=1, context=None):
                 z = func(x, y, context)
             else:
                 z = func(x, y)
-            if minz is None:
-                minz = maxz = z
-            if z < minz: minz = z
-            if z > maxz: maxz = z
+            if minz is None or z < minz: minz = z
             dx.append(Points([ [x, y, z] ]))
         dx.append(Points([ [x_range[-1], y, 0] ]))  # place holder for the base
         plot.append(dx)
