@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from sweep import *
 
 fn = None       
-fa = 1
-fs = 1
+fa = 2
+fs = 2
 
 def test_sphere():
     c = cube(4, center=True).color("blue")
@@ -237,11 +237,12 @@ def run_test(test):
 
 def run_enabled_tests(tests):
 
-    prof_time("Testing...")
+    print("Testing...")
     u = []
     for test in tests:
         if test.enabled:
             u.append( run_test(test) )
+    prof_time("All", final=True)
     return u
 
 def run_tests():
@@ -269,9 +270,8 @@ def run_tests():
         Test(name="Plot",           enabled=True,  func=test_plot,          pos=[  0,   0, -60]),
     ]
 
-    #u = run_enabled_tests(tests)
-    u = run_test(tests[2])
-    prof_lap_finish("cross")
+    u = run_enabled_tests(tests)
+    #u = run_test(tests[2])
     show(u)
 
 if __name__ == "__main__":
