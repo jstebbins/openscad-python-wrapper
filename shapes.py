@@ -1367,7 +1367,7 @@ class Faces():
         # standard deviations.  This assures that we will generally select
         # a large flat face over a small rounded corner even though the 
         # corner may match the given vector better.
-        threshold     = self.mean_area + self.deviation_area / 2
+        threshold     = self.mean_area + self.deviation_area
         for ii in range(len(self.faceMetrics)):
             angle  = vector_angle(self.faceMetrics[ii].normal, vec)
             area = self.faceMetrics[ii].area
