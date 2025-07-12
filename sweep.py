@@ -2,7 +2,7 @@ from transforms import *
 from dataclasses import dataclass
 from utils import *
 
-def generate_faces(shapes, closed):
+def generate_faces(shapes, closed, cull=False):
     """
     This function assums the shapes all have the same number of points
     """
@@ -35,13 +35,17 @@ def generate_faces(shapes, closed):
             elif d13 > eps:
                 faces.extend([[p2, p3, p1], [p3, p4, p1]])
 
-    # remove degenerates
-    culled_faces = []
-    for face in faces:
-        edge1 = verts[face[1]] - verts[face[0]]
-        edge2 = verts[face[2]] - verts[face[0]]
-        if edge1.cross(edge2).norm() > eps:
-            culled_faces.append(face)
+    # Remove degenerates
+    # This is slow, so I've made it optional as it's often not needed
+    if cull:
+        culled_faces = []
+        for face in faces:
+            edge1 = verts[face[1]] - verts[face[0]]
+            edge2 = verts[face[2]] - verts[face[0]]
+            if edge1.cross(edge2).norm() > eps:
+                culled_faces.append(face)
+    else:
+        culled_faces = faces
 
     return [verts, culled_faces]
 
