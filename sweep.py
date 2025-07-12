@@ -1,5 +1,6 @@
 from transforms import *
 from dataclasses import dataclass
+from utils import *
 
 def generate_faces(shapes, closed):
     """
@@ -15,9 +16,9 @@ def generate_faces(shapes, closed):
     nshapes = len(shapes)
     npoints = len(shapes[0])
     if not closed:
-        cap = [ii for ii in range(npoints - 1, -1, -1)]
+        cap = [ii for ii in range(npoints)]
         faces.append(cap)
-        cap = [ii for ii in range((nshapes - 1) * npoints, nshapes * npoints)]
+        cap = [ii for ii in range(nshapes * npoints - 1, (nshapes - 1) * npoints - 1, -1)]
         faces.append(cap)
     for ss in range(nshapes - (not closed)):
         for pp in range(npoints):
@@ -26,14 +27,15 @@ def generate_faces(shapes, closed):
             p3 = ((ss + 1) % nshapes) * npoints + ((pp + 1) % npoints)
             p4 = ((ss + 0) % nshapes) * npoints + ((pp + 1) % npoints)
 
-            # Check if any edges are coincedent, i.e. degenerate face
             d42 = norm(verts[p4] - verts[p2])
             d13 = norm(verts[p1] - verts[p3])
-            if d42 < d13:
-                faces.extend([[p1, p4, p2], [p2, p4, p3]])
-            else:
-                faces.extend([[p1, p3, p2], [p1, p4, p3]])
+            # Use short edge, but don't use degenerate edges
+            if d42 < d13 and d42 > eps:
+                faces.extend([[p2, p4, p1], [p3, p4, p2]])
+            elif d13 > eps:
+                faces.extend([[p2, p3, p1], [p3, p4, p1]])
 
+    # remove degenerates
     culled_faces = []
     for face in faces:
         edge1 = verts[face[1]] - verts[face[0]]
@@ -168,3 +170,30 @@ def rotate_sweep(shape, angle=360):
     context = RotateSweepContext(index=0, steps=steps, step=step, start=start, span=span)
 
     return sweep(shape, transforms=rotateSweepTransform, closed=closed, context=context)
+
+def plot3d(func, x_range, y_range, base=1, context=None):
+
+    minz = maxz = None
+    plot = []
+    for y in y_range:
+        dx = Points([ [x_range[0], y, 0] ])         # place holder for the base
+        for x in x_range:
+            if context is not None:
+                z = func(x, y, context)
+            else:
+                z = func(x, y)
+            if minz is None:
+                minz = maxz = z
+            if z < minz: minz = z
+            if z > maxz: maxz = z
+            dx.append(Points([ [x, y, z] ]))
+        dx.append(Points([ [x_range[-1], y, 0] ]))  # place holder for the base
+        plot.append(dx)
+
+    # Add left and right edges
+    bottom = minz - base
+    for row in plot:
+        row[0].z  = bottom
+        row[-1].z = bottom
+
+    return generate_faces(plot, closed=False)

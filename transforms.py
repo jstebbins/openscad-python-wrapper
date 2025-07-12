@@ -390,10 +390,8 @@ class Vector(Matrix):
         # numpy cross vectors must not be affine
         a = self.deaffine()
         b = p.deaffine()
-        if isinstance(p, Vector):
-            return Vector(np.linalg.cross(a.matrix, b.matrix), affine=False)
-        else:
-            return Points(np.linalg.cross(a.matrix, b.matrix), affine=False)
+        C = type(p)
+        return C(np.linalg.cross(a.matrix, b.matrix), affine=False)
 
     def unit(self, error=None):
         if error is not None and norm(self) < eps:
@@ -409,7 +407,17 @@ class Vector(Matrix):
     def __getattr__(self, name):
         return (self[0] if name == "x" else 
                 self[1] if name == "y" else 
-                self[2] if name == "z" else super().__getattr__(self, name))
+                self[2] if name == "z" else super().__getattr__(name))
+
+    def __setattr__(self, name, val):
+        if name == "x":
+            self[0] = val
+        elif name == "y":
+            self[1] = val
+        elif name == "z":
+            self[2] = val
+        else:
+            super().__setattr__(name, val)
 
     def __getitem__(self, key):
         return self.matrix[key]

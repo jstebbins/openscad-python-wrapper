@@ -46,6 +46,7 @@ def prof_lap_finish(key, msg=""):
 
     if not profile: return
     print(f"{msg} - {key} ellapsed: {prof_dict[key].ellapse / (1000*1000)}ms")
+    del prof_dict[key]
 
 def prof_time(msg="", final=False):
     global prof_last

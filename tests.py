@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from sweep import *
 
 fn = None       
-fa = 3
-fs = 3
+fa = 1
+fs = 1
 
 def test_sphere():
     c = cube(4, center=True).color("blue")
@@ -201,25 +201,72 @@ def test_attach():
 
     return t1
 
+def test_plot():
+
+    @dataclass()
+    class PlotContextExample():
+        """
+        Example transform context for sweep
+        """
+        amplitude   : float = None
+        wavelength  : float = None
+
+    def plotFuncExample(x, y, context):
+        scale = tau / context.wavelength
+        return context.amplitude / 2 * np.sin(scale * x) + context.amplitude / 2 * np.sin(scale * y)
+
+    width   = 40
+    depth   = 20
+    wavelen = 10
+    height  = 5
+
+    context = PlotContextExample(amplitude=height, wavelength=wavelen)
+    width = int(width / fs + 1) * fs
+    range_x = np.arange(-width / 2, width / 2, fs)
+    range_y = np.arange(-depth / 2, depth / 2, fs)
+    p = plot3d(plotFuncExample, range_x, range_y, base=0, context=context)
+
+    t1 = polyhedron(points=p[0], faces=p[1])
+
+    return t1
+
+def run_enabled_tests(tests):
+
+    prof_time("Testing...")
+    u = []
+    for test in tests:
+        if test.enabled:
+            u.append( test.func().translate(test.pos) )
+            prof_time(f"    {test.name}")
+    return u
 
 def run_tests():
-    all         = False
-    attach      = False
-    composition = True
 
-    print("Testing...")
-    u = []
-    if all:         u.append( test_sweep() )
-    if all:         u.append( test_path_sweep().left(50) )
-    if all:         u.append( test_rotate_sweep().right(50) )
-    if all:         u.append( test_prisnoid().fwd(50) )
-    if all:         u.append( test_cylinder().back(60) )
-    if all:         u.append( test_sphere().right(50).up(50) )
-    if all:         u.append( test_justify().down(40) )
-    if composition: u.append( test_composition() )
-    if attach:      u.append( test_attach() )
+    @dataclass()
+    class Test():
+        """
+        Example transform context for sweep
+        """
+        name      : str     = None
+        enabled   : bool    = False
+        func      : ...     = None
+        pos       : list    = (0, 0, 0)
+
+    tests = [
+        Test(name="Sweep",          enabled=True,  func=test_sweep,         pos=[  0,   0,   0]),
+        Test(name="Path Sweep",     enabled=True,  func=test_path_sweep,    pos=[-50,   0,   0]),
+        Test(name="Rotate Sweep",   enabled=True,  func=test_rotate_sweep,  pos=[ 50,   0,   0]),
+        Test(name="Prisnoid",       enabled=True,  func=test_prisnoid,      pos=[  0, -50,   0]),
+        Test(name="Cylinder",       enabled=True,  func=test_cylinder,      pos=[  0,  60,   0]),
+        Test(name="Sphere",         enabled=True,  func=test_sphere,        pos=[ 50,   0,  50]),
+        Test(name="Justify",        enabled=True,  func=test_justify,       pos=[  0,   0, -40]),
+        Test(name="Composition",    enabled=False, func=test_composition),
+        Test(name="Attach",         enabled=False, func=test_attach),
+        Test(name="Plot",           enabled=True,  func=test_plot,          pos=[  0,   0, -60]),
+    ]
+
+    u = run_enabled_tests(tests)
     show(u)
-
 
 if __name__ == "__main__":
     run_tests()
