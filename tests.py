@@ -194,45 +194,32 @@ def test_composition():
 
     return t1
 
-def test_xxx():
-    cu1 = cube(200, center=True)
-    cu2 = cube(200, center=True).right(15).fwd(15).up(15)
-    t1 = cu1 - cu2
-
-    cy1 = cylinder(l=110, r=20).attach(t1, "left", justify="bottom", inside=True)
-    cy2 = cylinder(l=110+0.2, r=15).down(.1).attach(cy1, "bottom", justify="bottom", inside=True)
-
-    tu = cy1 - cy2
-    #tu.show()
-    t1 = t1.difference(cy2)
-    t1 = t1.union(tu)
-
-    return t1
-
-
 def test_attach():
-    c1 = cube(30, center=True).rotate([0, 0, 0])
-    c2 = cube([10, 20, 34], center=True).color("blue").up(0).attach(c1, where="bottom", justify="right", inside=True)
+    c1 = cube(15, center=True).rotate([0, 0, 0])
+    c2 = cube([5, 10, 15], center=True).color("blue").up(0).attach(c1, where="bottom", justify="right", inside=True)
     t1 = c1 | c2
 
     return t1
 
 
 def run_tests():
-    all = True
+    all         = False
+    attach      = False
+    composition = True
+
     print("Testing...")
     u = []
-    if all: u.append( test_sweep() )
-    if all: u.append( test_path_sweep().left(50) )
-    if all: u.append( test_rotate_sweep().right(50) )
-    if all: u.append( test_prisnoid().fwd(50) )
-    if all: u.append( test_cylinder().back(60) )
-    if all: u.append( test_sphere().right(50).up(50) )
-    if all: u.append( test_justify().down(40) )
-    #u.append( test_composition() )
-    #u.append( test_attach() )
-    #u.append( test_xxx() )
+    if all:         u.append( test_sweep() )
+    if all:         u.append( test_path_sweep().left(50) )
+    if all:         u.append( test_rotate_sweep().right(50) )
+    if all:         u.append( test_prisnoid().fwd(50) )
+    if all:         u.append( test_cylinder().back(60) )
+    if all:         u.append( test_sphere().right(50).up(50) )
+    if all:         u.append( test_justify().down(40) )
+    if composition: u.append( test_composition() )
+    if attach:      u.append( test_attach() )
     show(u)
+
 
 if __name__ == "__main__":
     run_tests()

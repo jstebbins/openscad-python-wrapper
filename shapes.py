@@ -1495,6 +1495,15 @@ class Composition(Null):
         C = type(self)
         assert False, "Required build() method missing for class {C}"
 
+    def build_all(self):
+        """
+        Build self and all linked compositions
+        """
+
+        self.build()
+        for composition in self.compositions:
+            composition.build_all()
+
     def append(self, other):
         """
         Append another Composition to this Composition's list of
@@ -1551,7 +1560,6 @@ class Composition(Null):
         """
         if tag is None: return None
 
-        self.build()
         tagged_objs = [obj for obj in self.objects if obj.has_tag(tag)]
         for composition in self.compositions:
             tagged_objs.extend(composition.find_tagged_objects(tag))
@@ -1598,6 +1606,9 @@ class Composition(Null):
                         that have the tag associated with the operation are collected
                         and act as the right hand side of the operation.
         """
+
+        self.build_all()
+
         left = parent
         for op in operations:
             right = self.find_tagged_objects(op.tag)
