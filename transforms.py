@@ -1,5 +1,5 @@
 import numpy as np
-from utils import get_fnas
+from utils import get_fnas, prof_lap_start, prof_lap_pause
 
 eps = 1e-6
 tau = 2 * np.pi
@@ -242,16 +242,17 @@ class Matrix():
 
     def __sub__(self, m):
         C = type(self)
-        return C(self.matrix - m, affine=self.is_affine)
+        s = C(self.matrix - m.matrix, affine=self.is_affine)
+        return s
 
     def __rsub__(self, m):
         C = type(self)
-        return C(m - self.matrix, affine=self.is_affine)
+        return C(m.matrix - self.matrix, affine=self.is_affine)
 
     def __radd__(self, m):
         m = self.check_affine(m)
         C = type(self)
-        return C(self.matrix + m, affine=self.is_affine)
+        return C(self.matrix + m.matrix, affine=self.is_affine)
 
     def __add__(self, m):
         m = self.check_affine(m)
@@ -378,15 +379,36 @@ class Vector(Matrix):
         C = type(self)
         return C(self.matrix * x, affine=self.is_affine)
 
+    def __rmul__(self, x):
+        C = type(self)
+        return C(self.matrix * x, affine=self.is_affine)
+
     def __matmul__(self, m):
         m = self.check_affine(m)
-        return self.matrix @ m.matrix
+        C = type(self)
+        # numpy.float has an __mul__ that supercedes our __rmul__ for vectors
+        # and matricies. So we need to cast away the numpy.float to prevent use
+        # of it.
+        r = float(self.matrix @ m.matrix)
+        return r
 
     def __rmatmul__(self, m):
         m = self.check_affine(m)
         return m.matrix @ self.matrix
 
+    def __sub__(self, m):
+        C = type(self)
+        s = C(self.matrix - m.matrix, affine=self.is_affine)
+        return s
+
     def cross(self, p):
+        # Making the call into numpy for large numbers of small vectors is
+        # a performance problem.  So I'm micro-optimizing the common case.
+        if isinstance(p, Vector) and len(self.matrix) == 3:
+            x = self.matrix[1] * p.matrix[2] - self.matrix[2] * p.matrix[1]
+            y = self.matrix[2] * p.matrix[0] - self.matrix[0] * p.matrix[2]
+            z = self.matrix[0] * p.matrix[1] - self.matrix[1] * p.matrix[0]
+            return Vector([x, y, z])
         # numpy cross vectors must not be affine
         a = self.deaffine()
         b = p.deaffine()
@@ -464,11 +486,11 @@ class Points(Matrix):
 
     def __matmul__(self, m):
         m = self.check_affine(m)
-        return Points(np.vecmat(self.matrix, m), affine=self.is_affine)
+        return Points(np.vecmat(self.matrix, m.matrix), affine=self.is_affine)
 
     def __rmatmul__(self, m):
         m = self.check_affine(m)
-        return Points(np.matvec(m, self.matrix), affine=self.is_affine)
+        return Points(np.matvec(m.matrix, self.matrix), affine=self.is_affine)
 
     def affine(self):
         if self.is_affine: return self
@@ -480,7 +502,12 @@ class Points(Matrix):
         return self
 
     def mean(self):
-        return sum(v for v in self.matrix) / len(self.matrix)
+        val = self.matrix
+        s = val[0]
+        for v in val[1:]:
+            s += v
+        m = s / len(val)
+        return m
 
     def deriv(self, step=1, closed=False):
         npoints = len(self.matrix)
@@ -566,7 +593,11 @@ Some extra trig and linear algebra utilities that I needed
 """
 
 def mean(val):
-    return sum(v for v in val) / len(val)
+    s = val[0]
+    for v in val[1:]:
+        s += v
+    m = s / len(val)
+    return m
 
 def norm(val):
     n = np.linalg.norm(val)

@@ -9,7 +9,7 @@ def generate_faces(shapes, closed):
 
     verts = Points()
     for shape in shapes:
-        verts.append(shape)
+        verts.append(shape.deaffine())
 
     faces = []
     # Cap the ends
@@ -40,7 +40,7 @@ def generate_faces(shapes, closed):
     for face in faces:
         edge1 = verts[face[1]] - verts[face[0]]
         edge2 = verts[face[2]] - verts[face[0]]
-        if norm(edge1.cross(edge2)) > eps:
+        if edge1.cross(edge2).norm() > eps:
             culled_faces.append(face)
 
     return [verts, culled_faces]

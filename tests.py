@@ -230,14 +230,18 @@ def test_plot():
 
     return t1
 
+def run_test(test):
+    t = test.func().translate(test.pos)
+    prof_time(f"    {test.name}")
+    return t
+
 def run_enabled_tests(tests):
 
     prof_time("Testing...")
     u = []
     for test in tests:
         if test.enabled:
-            u.append( test.func().translate(test.pos) )
-            prof_time(f"    {test.name}")
+            u.append( run_test(test) )
     return u
 
 def run_tests():
@@ -265,7 +269,9 @@ def run_tests():
         Test(name="Plot",           enabled=True,  func=test_plot,          pos=[  0,   0, -60]),
     ]
 
-    u = run_enabled_tests(tests)
+    #u = run_enabled_tests(tests)
+    u = run_test(tests[2])
+    prof_lap_finish("cross")
     show(u)
 
 if __name__ == "__main__":
