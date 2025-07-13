@@ -218,7 +218,8 @@ def extrude_from_to(obj, pt1, pt2):
     obj = obj.linear_extrude(height=h, center=False).rotate([0, ay, az]).translate(pt1.list())
     return obj
 
-def line(pt1, pt2, d=1):
+def line(pt1, pt2, d=None):
+    if d is None: d = fs / 2
     circle = scad.circle(d=d)
     return extrude_from_to(circle, pt1, pt2)
 
