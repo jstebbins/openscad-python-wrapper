@@ -1060,9 +1060,9 @@ class Faces():
         degenerate = set()
         for ii in range(len(faces)):
             points = self.get_points(faces[ii])
-            if (norm(points[0] - points[1]) < eps or
-                norm(points[1] - points[2]) < eps or
-                norm(points[2] - points[0]) < eps):
+            edge1 = points[1] - points[0]
+            edge2 = points[2] - points[0]
+            if edge1.cross(edge2).norm() < eps:
                 degenerate.add(ii)
         return [faces[ii]   for ii in range(len(faces)) if ii not in degenerate]
 
