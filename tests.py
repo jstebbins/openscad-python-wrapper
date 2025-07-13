@@ -193,8 +193,9 @@ def test_composition():
     p1 = Tube("add").attach(t1, "left", inside=True)
     p2 = Tube("keep").attach(t1, "back", inside=True)
     p3 = Tube("add").left(50).attach(t1, "back", inside=True)
-    p = p1 + p2 + p3
-    t1 = p.compose(t1)
+    #p = p1 + p2 + p3       # One way to agregate compositions
+    p1.append([p2, p3])     # Another way to agregate compositions
+    t1 = p1.compose(t1)
 
     return t1
 

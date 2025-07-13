@@ -1520,7 +1520,10 @@ class Composition(Null):
         Returns self
         """
 
-        self.compositions.append(other)
+        if isinstance(other, list):
+            self.compositions.extend(other)
+        else:
+            self.compositions.append(other)
         return self
 
     def __add__(self, other):
