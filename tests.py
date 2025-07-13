@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from sweep import *
 
 fn = None       
-fa = 2
-fs = 2
+fa = 1
+fs = 1
 
 def test_sphere():
     c = cube(4, center=True).color("blue")
@@ -141,7 +141,7 @@ def test_sweep():
 
 def test_justify():
     t1 = cube(20, center=True).color("green")
-    c1 = cube(10, center=True)
+    c1 = cube([15, 5, 7], center=True)
     c2 = cube(5, center=True).color("blue")
     c1 |= c2.attach(c1, "top")
     t1 |= c1.attach(t1, "right").justify("left")
@@ -150,8 +150,9 @@ def test_justify():
 
 def test_composition():
     class Tube(Composition):
-        def __init__(self):
+        def __init__(self, tag):
             super().__init__()
+            self.tube_tag = tag
 
         def build(self):
             """
@@ -160,7 +161,7 @@ def test_composition():
             Called by Composition.compose()
             """
 
-            l       = 100
+            l       = 120
             r_in    = 15
             r_out   = 20
 
@@ -176,7 +177,7 @@ def test_composition():
             t = c1 - c2
 
             # Now tag our components for use with compose()
-            t.tag("keep")
+            t.tag(self.tube_tag)
             c2.tag("remove")
 
             self.objects    = [t, c2]
@@ -189,7 +190,10 @@ def test_composition():
 
     t1 = cube(200, center=True) - cube([170, 185, 170]).translate([0, -8, 0])
 
-    p = Tube().attach(t1, "left", inside=True)
+    p1 = Tube("add").attach(t1, "left", inside=True)
+    p2 = Tube("keep").attach(t1, "back", inside=True)
+    p3 = Tube("add").left(50).attach(t1, "back", inside=True)
+    p = p1 + p2 + p3
     t1 = p.compose(t1)
 
     return t1
@@ -245,6 +249,19 @@ def run_enabled_tests(tests):
     prof_time("All", final=True)
     return u
 
+def find_and_run_test(tests, name):
+    """
+    Find a test by name and run it.
+
+    The name may be abbreviated and the first matching test will be chosen
+    """
+
+    u = []
+    for test in tests:
+        if test.name.lower().startswith(name.lower()):
+            u.append( run_test(test) )
+    return u
+
 def run_tests():
 
     @dataclass()
@@ -252,7 +269,7 @@ def run_tests():
         """
         Example transform context for sweep
         """
-        name      : str     = None
+        name      : str     = "Test"
         enabled   : bool    = False
         func      : ...     = None
         pos       : list    = (0, 0, 0)
@@ -270,8 +287,8 @@ def run_tests():
         Test(name="Plot",           enabled=True,  func=test_plot,          pos=[  0,   0, -60]),
     ]
 
-    u = run_enabled_tests(tests)
-    #u = run_test(tests[2])
+    #u = run_enabled_tests(tests)
+    u = find_and_run_test(tests, "comp")
     show(u)
 
 if __name__ == "__main__":

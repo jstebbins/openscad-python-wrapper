@@ -323,11 +323,8 @@ class Object():
         self.tags           = set()
 
     def clone(self, object):
-        self.name           = object.name
-        self.oscad_obj      = object.oscad_obj
-        self.face_cache     = object.face_cache
-        self.hooks          = object.hooks
-        self.tags           = object.tags
+        for k, v in object.__dict__.items():
+            self.__dict__[k] = v
 
     def __setattr__(self, attr, value):
         """
@@ -747,10 +744,6 @@ class Null(Object):
         for hook in hook_defs:
             m = Affine.rot3d(np.radians(hook[1])) @ Affine.trans3d([0, 0, hook[2]])
             self.attachment_hook(hook[0], m)
-
-    def clone(self, object):
-        super().clone(object)
-        self.origin = object.origin
 
     def __getattr__(self, attr):
         """
@@ -1471,8 +1464,7 @@ class Composition(Null):
         Used by Object.copy()
         """
         super().clone(object)
-        self.objects        = object.objects
-        self.compositions   = object.objects
+        self.compositions   = copy.copy(object.compositions)
 
     def build(self):
         """
@@ -1543,9 +1535,10 @@ class Composition(Null):
         Returns a copy of self with the other Composition appended
         """
 
-        comp = Composition(self)
-        comp.compositions.append(other)
-        return comp
+        C = type(self)
+        res = C.copy(self)
+        res.compositions.append(other)
+        return res
 
     def find_tagged_objects(self, tag):
         """
