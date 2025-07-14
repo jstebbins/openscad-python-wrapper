@@ -1357,11 +1357,16 @@ class Faces():
 
         best_angle    = tau
         selection     = 0
-        # Choose a face that is larger than the average face by a couple
-        # standard deviations.  This assures that we will generally select
+        # Choose a face that is larger than the average face by about a
+        # standard deviation.  This assures that we will generally select
         # a large flat face over a small rounded corner even though the 
         # corner may match the given vector better.
-        threshold     = self.mean_area + self.deviation_area
+
+        # Tweak the threshold using relative standard devaition, if RSD is < 1
+        # there is low variance. I.e. all sides have similar area. We need
+        # to bring the threshold down in this case.
+        rsd = self.deviation_area / self.mean_area
+        threshold = self.mean_area + (rsd - 1) * self.mean_area
         for ii in range(len(self.faceMetrics)):
             angle  = vector_angle(self.faceMetrics[ii].normal, vec)
             area = self.faceMetrics[ii].area
