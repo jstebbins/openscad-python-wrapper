@@ -1,16 +1,15 @@
 import os
-print(os.getcwd())
-# Fix search path since OpenSCAD doesnt' add CWD
-os.sys.path.insert(0, os.getcwd())
-
+import sys
 from shapes import *
 from transforms import *
 from dataclasses import dataclass
 from sweep import *
 
-fn = None       
-fa = 1
-fs = 1
+print(sys.path)
+
+fn = 0
+fa = 2
+fs = 2
 
 def test_sphere():
     c = cube(4, center=True).color("blue")
@@ -43,9 +42,6 @@ def test_prisnoid():
     t2 = wireframe(t1, unify=True).fwd(45)
     t1 |= c.attach(t1, where=RT)
     t1 |= c.attach(t1, where=TP)
-
-    #faces = t1.faces()
-    #t3 = polyhedron(points=faces.points, faces=faces.faces).fwd(75)
 
     return t1 | t2
 
@@ -288,8 +284,9 @@ def run_tests():
         Test(name="Plot",           enabled=True,  func=test_plot,          pos=[  0,   0, -60]),
     ]
 
-    #u = run_enabled_tests(tests)
-    u = find_and_run_test(tests, "comp")
+    u = run_enabled_tests(tests)
+    #u = find_and_run_test(tests, "comp")
+
     show(u)
 
 if __name__ == "__main__":
