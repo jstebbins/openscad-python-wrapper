@@ -925,26 +925,151 @@ class prisnoid(Object):
 
         sz1     = tup(size1, 2);
         sz2     = tup(size2, 2);
-        rnd1    = tup(0, 4) if round1 is None else tup(round1, 4)
-        rnd2    = tup(0, 4) if round2 is None else tup(round2, 4)
+        rnd1    = lst(0, 4) if round1 is None else lst(round1, 4)
+        rnd2    = lst(0, 4) if round2 is None else lst(round2, 4)
         sh      = tup(0, 2) if shift is None else tup(shift, 2)
 
-        bot_corners = (
-            [ (sz1[0] / 2 - rnd1[0]),  (sz1[1] / 2 - rnd1[0]), -(h / 2 - rnd1[0])],
-            [-(sz1[0] / 2 - rnd1[1]),  (sz1[1] / 2 - rnd1[1]), -(h / 2 - rnd1[1])],
-            [-(sz1[0] / 2 - rnd1[2]), -(sz1[1] / 2 - rnd1[2]), -(h / 2 - rnd1[2])],
-            [ (sz1[0] / 2 - rnd1[3]), -(sz1[1] / 2 - rnd1[3]), -(h / 2 - rnd1[3])],
-        )
-        top_corners = (
-            [ (sz2[0] / 2 - rnd2[0]) + sh[0],  (sz2[1] / 2 - rnd2[0]) + sh[1],  (h / 2 - rnd2[0])],
-            [-(sz2[0] / 2 - rnd2[1]) + sh[0],  (sz2[1] / 2 - rnd2[1]) + sh[1],  (h / 2 - rnd2[1])],
-            [-(sz2[0] / 2 - rnd2[2]) + sh[0], -(sz2[1] / 2 - rnd2[2]) + sh[1],  (h / 2 - rnd2[2])],
-            [ (sz2[0] / 2 - rnd2[3]) + sh[0], -(sz2[1] / 2 - rnd2[3]) + sh[1],  (h / 2 - rnd2[3])],
-        )
-        spheres = (tuple(scad.sphere(rnd1[ii]).translate(bot_corners[ii]) for ii in range(4)) +
-                   tuple(scad.sphere(rnd2[ii]).translate(top_corners[ii]) for ii in range(4)))
+        # Merge rounding lists, bottom first
+        radius = rnd1 + rnd2
+        # Since zero size spheres are not permitted, make minimum round fs
+        for ii in range(8):
+            radius[ii] = radius[ii] if radius[ii] > 0 else fs
 
+        # Where the corners would be if they were not rounded.
+        # These are listed in the same bottom-to-top, counter-clockwise
+        # order as 'radius'
+        corners = [
+            [ sz1[0] / 2,  sz1[1] / 2, -h / 2],  # bottom back right
+            [-sz1[0] / 2,  sz1[1] / 2, -h / 2],  # bottom back left
+            [-sz1[0] / 2, -sz1[1] / 2, -h / 2],  # bottom front left
+            [ sz1[0] / 2, -sz1[1] / 2, -h / 2],  # bottom front right
+
+            [ sz2[0] / 2 + sh[0],  sz2[1] / 2 + sh[1],  h / 2],  # top back right
+            [-sz2[0] / 2 + sh[0],  sz2[1] / 2 + sh[1],  h / 2],  # top back left
+            [-sz2[0] / 2 + sh[0], -sz2[1] / 2 + sh[1],  h / 2],  # top front left
+            [ sz2[0] / 2 + sh[0], -sz2[1] / 2 + sh[1],  h / 2],  # top front right
+        ]
+
+        # I want the faces to have the same angle across the entire face, which means
+        # doing a little arithmatic. It also means that bottom/top corners will not be
+        # square if rounding for each corner differs. You can have one or the other,
+        # but not both.
+        #
+        # Find the center points for the rounded corners.
+        centers = self.find_center_points(corners, radius)
+
+        spheres = tuple(scad.sphere(radius[ii]).translate(centers[ii]) for ii in range(8))
         self.oscad_obj = scad.hull(*spheres)
+
+
+        # More arithmatic to find some attachment hooks
+        left_offset     = (sz1[0] - sz2[0]) / 2 + sh[0]
+        left_angle      = np.atan(left_offset / h)
+        hyp             = sz1[1] / 2 - left_offset / 2
+        left_mid        = hyp * np.cos(left_angle)
+        left_angle      = np.degrees(left_angle)
+
+        front_offset    = (sz1[1] - sz2[1]) / 2 + sh[1]
+        front_angle     = np.atan(front_offset / h)
+        hyp             = sz1[1] / 2 - front_offset / 2
+        front_mid       = hyp * np.cos(front_angle)
+        front_angle     = np.degrees(front_angle)
+
+        back_offset     = (sz1[1] - sz2[1]) / 2 - sh[1]
+        back_angle      = np.atan(back_offset / h)
+        hyp             = sz1[1] / 2 - back_offset / 2
+        back_mid        = hyp * np.cos(back_angle)
+        back_angle      = np.degrees(back_angle)
+
+        right_offset    = (sz1[0] - sz2[0]) / 2 - sh[0]
+        right_angle     = np.atan(right_offset / h)
+        hyp             = sz1[0] / 2 - right_offset / 2
+        right_mid       = hyp * np.cos(right_angle)
+        right_angle     = np.degrees(right_angle)
+
+        """
+        Named attachment hooks.
+        """
+        hook_defs = [
+            ["front", [  90 - front_angle,                 0, 0], front_mid],
+            ["back",  [ -90 +  back_angle,                 0, 0],  back_mid],
+            ["right", [                 0,  90 - right_angle, 0], right_mid],
+            ["left",  [                 0, -90 +  left_angle, 0],  left_mid],
+            ["top",   [                 0,                 0, 0],     h / 2],
+            ["bottom",[               180,                 0, 0],     h / 2],
+        ]
+        for hook in hook_defs:
+            m = Affine.rot3d(np.radians(hook[1])) @ Affine.trans3d([0, 0, hook[2]])
+            self.attachment_hook(hook[0], m)
+
+    def find_center_points(self, corners, radius):
+        # For each corner, we need to find the center point of an arc
+        # that is tangent to 2 vectors on each of 2 faces:
+        #
+        # corner[0] - bottom back right
+        # face 1 (YZ): bottom front right (3), bottom back right (0), top back right (4)
+        # face 2 (XZ): bottom back left (1), bottom back right (0), top back right (4)
+        #
+        # corner[1] - bottom back left
+        # face 1 (XZ): bottom back right (0), bottom back left (1), top back left (5)
+        # face 2 (YZ): bottom front left (2), bottom back left (1), top back left (5)
+        #
+        # ...
+        # corner[4] - top back right
+        # face 1 (YZ): top front right (7), top back right (4), bottom back right (0)
+        # face 2 (XZ): top back left (5), top back right (4), bottom back right (0)
+        #
+        # A pattern emerges ...
+
+        result = copy.deepcopy(corners)
+        corners = Points(corners)
+
+        # Bottoms
+        for ii in range(4):
+            # X vs Y axis swaps for each ii
+            offset = 1 if ii % 2 == 0 else -1
+
+            p1 = (ii - offset) % 4
+            p2 = ii
+            p3 = p2 + 4
+
+            # YZ face
+            c = Points([ [corners[p1].y, corners[p1].z], [corners[p2].y, corners[p2].z], [corners[p3].y, corners[p3].z] ])
+            (cp1, n, tp1, tp2) = circle_2tan(radius[ii], c)
+
+            p1 = (ii + offset) % 4
+            # XZ face
+            c = Points([ [corners[p1].x, corners[p1].z], [corners[p2].x, corners[p2].z], [corners[p3].x, corners[p3].z] ])
+            (cp2, n, tp1, tp2) = circle_2tan(radius[ii], c)
+
+            result[p2][0] = float(cp2[0])   # X from XZ center point
+            result[p2][1] = float(cp1[0])   # Y from YZ center point
+            result[p2][2] = float(cp1[1])   # Z should be the same for both XZ and YZ
+
+        # Tops
+        for ii in range(4):
+            # X vs Y axis swaps for each ii
+            offset = 1 if ii % 2 == 0 else -1
+
+            p1 = (ii - offset) % 4 + 4
+            p2 = ii + 4
+            p3 = p2 - 4
+
+            # YZ face
+            c = Points([ [corners[p1].y, corners[p1].z], [corners[p2].y, corners[p2].z], [corners[p3].y, corners[p3].z] ])
+            (cp1, n, tp1, tp2) = circle_2tan(radius[ii + 4], c)
+
+            p1 = (ii + offset) % 4 + 4
+            # XZ face
+            c = Points([ [corners[p1].x, corners[p1].z], [corners[p2].x, corners[p2].z], [corners[p3].x, corners[p3].z] ])
+            (cp2, n, tp1, tp2) = circle_2tan(radius[ii + 4], c)
+
+            result[p2][0] = float(cp2[0])   # X from XZ center point
+            result[p2][1] = float(cp1[0])   # Y from YZ center point
+            result[p2][2] = float(cp1[1])   # Z should be the same for both XZ and YZ
+
+        return result
+
 
 class circle(Object):
     def __init__(self, *args, **kwargs):

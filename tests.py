@@ -8,8 +8,8 @@ from sweep import *
 print(sys.path)
 
 fn = 0
-fa = 2
-fs = 2
+fa = 1
+fs = 1
 
 def test_sphere():
     c = cube(4, center=True).color("blue")
@@ -40,8 +40,8 @@ def test_prisnoid():
     c = cube(4, center=True).color("blue")
     t1 = prisnoid(40, 20, 6, 4, 25, shift=[-5, -5])
     t2 = wireframe(t1, unify=True).fwd(45)
-    t1 |= c.attach(t1, where=RT)
-    t1 |= c.attach(t1, where=TP)
+    t1 |= c.attach(t1, where="right")
+    t1 |= c.attach(t1, where="top")
 
     return t1 | t2
 
@@ -285,7 +285,7 @@ def run_tests():
     ]
 
     u = run_enabled_tests(tests)
-    #u = find_and_run_test(tests, "comp")
+    #u = find_and_run_test(tests, "prisn")
 
     show(u)
 
