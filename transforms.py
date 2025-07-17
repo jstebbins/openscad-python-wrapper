@@ -143,7 +143,7 @@ class Matrix():
     convert operands to affine when required.
     """
 
-    def __init__(self, val=None, affine=False):
+    def __init__(self, val=None, shape=None, affine=False):
         self.is_affine = affine
         self.matrix = None
         self.type = np.float32
@@ -154,6 +154,8 @@ class Matrix():
             self.matrix = val
         elif val is not None:
             self.matrix = np.array(val, dtype=self.type)
+        elif shape is not None:
+            self.matrix = np.empty(shape, dtype=self.type)
 
     def adj(self):
         return Matrix(np.matrix_transpose(self.matrix), affine=self.is_affine)
@@ -452,8 +454,11 @@ class Points(Matrix):
     Points are a stack of single dimension Matricies, so also need some special treatment
     """
 
-    def __init__(self, val=None, affine=False):
-        super().__init__(val, affine)
+    def __init__(self, val=None, shape=None, affine=False):
+        super().__init__(val, shape=shape, affine=affine)
+
+    def __setitem__(self, key, val):
+        self.matrix[key] = val
 
     def concat_init(plist):
         res = Points(plist[0])

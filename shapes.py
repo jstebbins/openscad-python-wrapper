@@ -354,6 +354,12 @@ class Object():
         else:
             assert False, f"Object '{self.name}' has no attribute '{attr}'"
 
+    def get_first_obj(*args):
+        if isinstance(args[0], list):
+            return args[0][0]
+        else:
+            return args[0]
+
     def get_oscad_obj_list(*args):
         oscad_objs = []
         for arg in args:
@@ -934,6 +940,7 @@ class prisnoid(Object):
         # Since zero size spheres are not permitted, make minimum round fs
         for ii in range(8):
             radius[ii] = radius[ii] if radius[ii] > 0 else fs
+        self.radius = radius
 
         # Where the corners would be if they were not rounded.
         # These are listed in the same bottom-to-top, counter-clockwise
@@ -949,6 +956,7 @@ class prisnoid(Object):
             [-sz2[0] / 2 + sh[0], -sz2[1] / 2 + sh[1],  h / 2],  # top front left
             [ sz2[0] / 2 + sh[0], -sz2[1] / 2 + sh[1],  h / 2],  # top front right
         ]
+        self.corners = corners
 
         # I want the faces to have the same angle across the entire face, which means
         # doing a little arithmatic. It also means that bottom/top corners will not be
@@ -957,6 +965,7 @@ class prisnoid(Object):
         #
         # Find the center points for the rounded corners.
         centers = self.find_center_points(corners, radius)
+        self.centers = centers
 
         spheres = tuple(scad.sphere(radius[ii]).translate(centers[ii]) for ii in range(8))
         self.oscad_obj = scad.hull(*spheres)
@@ -1687,13 +1696,13 @@ class Composition(Null):
             return right if left is None else left
         if op == self.UNION:
             if left is not None:
-                right.insert(0, left)
+                return left.union(right)
             return union(right)
         if op == self.DIFF:
             return left.difference(right)
         if op == self.INTERSECT:
             if left is not None:
-                right.insert(0, left)
+                return left.intersection(right)
             return intersection(right)
 
     def compose(self, parent=None, operations=None):
@@ -1732,7 +1741,9 @@ def difference(*args):
     be adding only the first item in the list as a child to the node.
     """
 
-    res = Object()
+    obj = Object.get_first_obj(*args)
+    C = type(obj)
+    res = C.copy(obj)
     oscad_objs = Object.get_oscad_obj_list(*args)
     res.oscad_obj = scad.difference(oscad_objs)
     return res
@@ -1745,7 +1756,9 @@ def intersection(*args):
     Bug... or me? The OpenSCAD code looks a little sus. It appears to
     be adding only the first item in the list as a child to the node.
     """
-    res = Object()
+    obj = Object.get_first_obj(*args)
+    C = type(obj)
+    res = C.copy(obj)
     oscad_objs = Object.get_oscad_obj_list(*args)
     res.oscad_obj = scad.intersection(oscad_objs)
     return res
@@ -1754,7 +1767,9 @@ def union(*args):
     """
     Union a list of objects
     """
-    res = Object()
+    obj = Object.get_first_obj(*args)
+    C = type(obj)
+    res = C.copy(obj)
     oscad_objs = Object.get_oscad_obj_list(*args)
     res.oscad_obj = scad.union(oscad_objs)
     return res

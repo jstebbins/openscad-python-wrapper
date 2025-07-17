@@ -2,11 +2,15 @@ from transforms import *
 from dataclasses import dataclass
 from utils import *
 
-def generate_faces(shapes, closed, cull=False):
+def generate_faces(shapes, closed, style="default", cull=False):
     """
     This function assums the shapes all have the same number of points
     """
 
+    if style == "min_edge": style = 1
+    else:                   style = 0
+
+    prof_lap_start("gen")
     verts = Points()
     for shape in shapes:
         verts.append(shape.deaffine())
@@ -27,13 +31,16 @@ def generate_faces(shapes, closed, cull=False):
             p3 = ((ss + 1) % nshapes) * npoints + ((pp + 1) % npoints)
             p4 = ((ss + 0) % nshapes) * npoints + ((pp + 1) % npoints)
 
-            d42 = norm(verts[p4] - verts[p2])
-            d13 = norm(verts[p1] - verts[p3])
-            # Use short edge, but don't use degenerate edges
-            if d42 < d13 and d42 > eps:
-                faces.extend([[p2, p4, p1], [p3, p4, p2]])
-            elif d13 > eps:
-                faces.extend([[p2, p3, p1], [p3, p4, p1]])
+            if style == 1:
+                d42 = norm(verts[p4] - verts[p2])
+                d13 = norm(verts[p1] - verts[p3])
+                # Use short edge, but don't use degenerate edges
+                if d42 < d13 and d42 > eps:
+                    faces.extend([ [p2, p4, p1], [p3, p4, p2] ])
+                elif d13 > eps:
+                    faces.extend([ [p2, p3, p1], [p3, p4, p1] ])
+            else:
+                faces.extend([ [p2, p3, p1], [p3, p4, p1] ])
 
     # Remove degenerates
     # This is slow, so I've made it optional as it's often not needed
@@ -47,6 +54,7 @@ def generate_faces(shapes, closed, cull=False):
     else:
         culled_faces = faces
 
+    prof_lap_pause("gen")
     return [verts, culled_faces]
 
 def get_shape(shape, context=None, call=False):
@@ -99,7 +107,7 @@ def sweep(shape, transforms, closed=False, context=None):
                     break
             transformed_shapes.append(transform @ a_shape)
 
-    return generate_faces(transformed_shapes, closed)
+    return generate_faces(transformed_shapes, style="min_edge", closed=closed)
 
 def path_sweep(shape, path, closed=False):
 
@@ -177,18 +185,22 @@ def rotate_sweep(shape, angle=360):
 
 def plot3d(func, x_range, y_range, base=1, context=None):
 
+    prof_lap_start("plot")
     minz = None
     plot = []
     for y in y_range:
-        dx = Points([ [x_range[0], y, 0] ])         # place holder for the base
+        dx = Points(shape=[len(x_range) + 2, 3])    # preallocate the row, it's faster
+        dx[0] = [x_range[0], y, 0]                  # place holder for the base
+        xx = 1
         for x in x_range:
             if context is not None:
                 z = func(x, y, context)
             else:
                 z = func(x, y)
             if minz is None or z < minz: minz = z
-            dx.append(Points([ [x, y, z] ]))
-        dx.append(Points([ [x_range[-1], y, 0] ]))  # place holder for the base
+            dx[xx] = [x, y, z]
+            xx += 1
+        dx[xx] = [x_range[-1], y, 0]    # place holder for the base
         plot.append(dx)
 
     # Add left and right edges
@@ -197,4 +209,5 @@ def plot3d(func, x_range, y_range, base=1, context=None):
         row[0].z  = bottom
         row[-1].z = bottom
 
+    prof_lap_pause("plot")
     return generate_faces(plot, closed=False)
