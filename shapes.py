@@ -961,14 +961,7 @@ class prisnoid(Object):
         spheres = tuple(scad.sphere(radius[ii]).translate(centers[ii]) for ii in range(8))
         self.oscad_obj = scad.hull(*spheres)
 
-
         # More arithmatic to find some attachment hooks
-        left_offset     = (sz1[0] - sz2[0]) / 2 + sh[0]
-        left_angle      = np.atan(left_offset / h)
-        hyp             = sz1[1] / 2 - left_offset / 2
-        left_mid        = hyp * np.cos(left_angle)
-        left_angle      = np.degrees(left_angle)
-
         front_offset    = (sz1[1] - sz2[1]) / 2 + sh[1]
         front_angle     = np.atan(front_offset / h)
         hyp             = sz1[1] / 2 - front_offset / 2
@@ -986,6 +979,12 @@ class prisnoid(Object):
         hyp             = sz1[0] / 2 - right_offset / 2
         right_mid       = hyp * np.cos(right_angle)
         right_angle     = np.degrees(right_angle)
+
+        left_offset     = (sz1[0] - sz2[0]) / 2 + sh[0]
+        left_angle      = np.atan(left_offset / h)
+        hyp             = sz1[0] / 2 - left_offset / 2
+        left_mid        = hyp * np.cos(left_angle)
+        left_angle      = np.degrees(left_angle)
 
         """
         Named attachment hooks.
@@ -1024,45 +1023,26 @@ class prisnoid(Object):
         result = copy.deepcopy(corners)
         corners = Points(corners)
 
-        # Bottoms
-        for ii in range(4):
+        for ii in range(8):
             # X vs Y axis swaps for each ii
             offset = 1 if ii % 2 == 0 else -1
 
-            p1 = (ii - offset) % 4
+            # p2     - point at current corner
+            # p1, p2 - edge on top or bottom
+            # p2, p3 - edge from bottom to top
+            # [p1, p2], [p2, p3] are the 2 edges I am fitting a sphere to
+            p1 = (ii - offset) % 4 + 4 * int(ii / 4) # ii < 4 - bottom, ii >= 4 - top
             p2 = ii
-            p3 = p2 + 4
+            p3 = (p2 + 4) % 8
 
             # YZ face
             c = Points([ [corners[p1].y, corners[p1].z], [corners[p2].y, corners[p2].z], [corners[p3].y, corners[p3].z] ])
             (cp1, n, tp1, tp2) = circle_2tan(radius[ii], c)
 
-            p1 = (ii + offset) % 4
+            p1 = (ii + offset) % 4 + 4 * int(ii / 4) # ii < 4 - bottom, ii >= 4 - top
             # XZ face
             c = Points([ [corners[p1].x, corners[p1].z], [corners[p2].x, corners[p2].z], [corners[p3].x, corners[p3].z] ])
             (cp2, n, tp1, tp2) = circle_2tan(radius[ii], c)
-
-            result[p2][0] = float(cp2[0])   # X from XZ center point
-            result[p2][1] = float(cp1[0])   # Y from YZ center point
-            result[p2][2] = float(cp1[1])   # Z should be the same for both XZ and YZ
-
-        # Tops
-        for ii in range(4):
-            # X vs Y axis swaps for each ii
-            offset = 1 if ii % 2 == 0 else -1
-
-            p1 = (ii - offset) % 4 + 4
-            p2 = ii + 4
-            p3 = p2 - 4
-
-            # YZ face
-            c = Points([ [corners[p1].y, corners[p1].z], [corners[p2].y, corners[p2].z], [corners[p3].y, corners[p3].z] ])
-            (cp1, n, tp1, tp2) = circle_2tan(radius[ii + 4], c)
-
-            p1 = (ii + offset) % 4 + 4
-            # XZ face
-            c = Points([ [corners[p1].x, corners[p1].z], [corners[p2].x, corners[p2].z], [corners[p3].x, corners[p3].z] ])
-            (cp2, n, tp1, tp2) = circle_2tan(radius[ii + 4], c)
 
             result[p2][0] = float(cp2[0])   # X from XZ center point
             result[p2][1] = float(cp1[0])   # Y from YZ center point
