@@ -857,7 +857,7 @@ class cylinder(Object):
         if l is not None:
             h = l
         if d is not None:
-            d           = tup(r, 2)
+            d           = tup(d, 2)
             r           = [d[0] / 2, d[1] / 2]
 
         assert r is not None and h is not None, f"cylinder: Invalid parameters"
