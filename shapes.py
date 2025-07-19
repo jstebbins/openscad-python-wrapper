@@ -560,6 +560,14 @@ class Object():
 
         return res
 
+    def scale(self, s):
+        C = type(self)
+        res = C.copy(self)
+
+        res.oscad_obj = res.oscad_obj.scale(s)
+
+        return res
+
     def up(self, val):
         """
         Aliases for "translate"
@@ -864,8 +872,13 @@ class cylinder(Object):
 
         r               = tup(r, 2)
         self.name       = "Cylinder"
-        cpath           = cyl_path(r=r, l=h, ends=ends)
-        self.oscad_obj  = scad.polygon(cpath.deaffine().list()).rotate_extrude()
+        if ends is None:
+            # Simple cylinder, use OpenSCAD
+            self.oscad_obj  = scad.cylinder(r1=r[0], r2=r[1], h=h, center=True)
+        else:
+            # Enhanced cylinder
+            cpath           = cyl_path(r=r, l=h, ends=ends)
+            self.oscad_obj  = scad.polygon(cpath.deaffine().list()).rotate_extrude()
 
         r_mid = np.fmin(r[0], r[1]) + np.fabs(r[0] - r[1]) / 2
         angle = np.degrees(np.atan((r[0] - r[1]) / h))
