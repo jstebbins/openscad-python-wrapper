@@ -239,8 +239,8 @@ class Matrix():
             else:
                 return self.matrix[key]
         elif isinstance(key, slice):
-            start, stop, step = key.indices(len(self.matrix))
-            return [self.matrix[ii] for ii in range(start, stop, step)]
+            C = type(self)
+            return C(self.matrix[key])
 
     def __sub__(self, m):
         C = type(self)
@@ -460,6 +460,9 @@ class Points(Matrix):
     def __setitem__(self, key, val):
         self.matrix[key] = val
 
+    def remove(self, row):
+        return Matrix(np.delete(self.matrix, row, 0), affine=self.is_affine)
+
     def concat_init(plist):
         res = Points(plist[0])
         res.concat(plist[1:])
@@ -470,6 +473,8 @@ class Points(Matrix):
             self.append(p)
 
     def points3d(self):
+        if len(self.matrix) == 0:
+            return self
         if len(self.matrix[0]) - self.is_affine == 3:
             return self
         pl = self.matrix.tolist()

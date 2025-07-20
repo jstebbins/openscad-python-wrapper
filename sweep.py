@@ -1,6 +1,89 @@
 from transforms import *
 from dataclasses import dataclass
 from utils import *
+import copy
+
+def lofttri(sh1, sh2, idx1, idx2, np1, np2, trimax, col_wrap):
+    trilist = []
+    i1 = i2 = tc1 = tc2 = 0
+    np1c = np1 + col_wrap
+    np2c = np2 + col_wrap
+    while True:
+        if np1 != np2:
+            t1 = i1 + 1 if i1 < np1c else np1c
+            t2 = i2 + 1 if i2 < np2c else np2c
+            if t1 >= np1c and t2 >= np2c:
+                return trilist
+
+
+            d12 = norm(sh2[t2 % np2] - sh1[i1 % np1]) if t2 < np2c else 9e9
+            d21 = norm(sh1[t1 % np1] - sh2[i2 % np2]) if t1 < np1c else 9e9
+
+            if d12 < d21:
+                userow = 2 if tc1 < trimax else 1
+            else:
+                userow = 1 if tc2 < trimax else 2
+
+            if userow == 1:
+                newt    = t1 if t1 < np1c else i1
+                newofft = idx1 + newt % np1
+            else:
+                newt    = t2 if t2 < np2c else i2
+                newofft = idx2 + newt % np2
+
+            tc1 = tc1 + 1 if d12 < d21 and tc1 < trimax else 0
+            tc2 = tc2 + 1 if d21 < d12 and tc2 < trimax else 0
+
+            tri = [idx1 + i1 % np1, idx2 + i2 % np2, newofft]
+            trilist.append(tri)
+            if userow == 1 and t1 < np1c:
+                i1 = t1
+            if userow == 2 and t2 < np2c:
+                i2 = t2
+        else:
+            t = i1 + 1
+            if t >= np1c:
+                return trilist
+
+            d12 = norm(sh2[t % np1] - sh1[i1 % np1]) if t < np1c else 9e9
+            d21 = norm(sh1[t % np1] - sh2[i1 % np1]) if t < np1c else 9e9
+            tri = [ [idx1 + i1 % np1, idx2 + i1 % np1, idx2 +  t % np1 if d12 < d21 else idx1 +  t % np1],
+                    [idx2 +  t % np1, idx1 +  t % np1, idx1 + i1 % np1 if d12 < d21 else idx2 + i1 % np1] ]
+            trilist.extend(tri)
+            i1 = i2 = t
+
+def tri_array(shapes):
+    nshapes = len(shapes)
+    # This is essentially the col_wrap=true version of BOSL2 vnf_tri_array
+    # Eliminate duplicate points at the column wrap
+    # And flatten shapes into verts
+    verts = Points()
+    for shape in shapes:
+        if shape[0] == shape[-1]:
+            shape.remove(-1)
+        verts.append(shape.deaffine())
+
+    npoints = [len(shape) for shape in shapes]
+    ii  = 0
+    idx = []
+    for n in npoints:
+        idx.append(ii)
+        ii += n
+    idx.append(ii)
+
+    cap1 = [ p for p in range(npoints[0]) ]
+    cap2 = [ p for p in range(idx[nshapes] - 1, idx[nshapes - 1] - 1, -1) ]
+
+    faces = []
+    faces.append(cap1)
+    for ii in range(nshapes - 1):
+        jj = (ii + 1) % nshapes
+        max_extra_edges = np.max([1, abs(npoints[ii] - npoints[jj])])
+        f = lofttri(shapes[ii], shapes[jj], idx[ii], idx[jj], npoints[ii], npoints[jj], trimax=max_extra_edges, col_wrap=True)
+        faces.extend(f)
+    faces.append(cap2)
+
+    return [verts, faces]
 
 def generate_faces(shapes, closed, style="default", cull=False):
     """
@@ -8,9 +91,10 @@ def generate_faces(shapes, closed, style="default", cull=False):
     """
 
     if style == "min_edge": style = 1
+    if style == "tri_array":
+        return tri_array(shapes)
     else:                   style = 0
 
-    prof_lap_start("gen")
     verts = Points()
     for shape in shapes:
         verts.append(shape.deaffine())
@@ -54,7 +138,6 @@ def generate_faces(shapes, closed, style="default", cull=False):
     else:
         culled_faces = faces
 
-    prof_lap_pause("gen")
     return [verts, culled_faces]
 
 def get_shape(shape, context=None, call=False):
@@ -75,7 +158,7 @@ def get_shape(shape, context=None, call=False):
 
     return shape
 
-def sweep(shape, transforms, closed=False, context=None):
+def sweep(shape, transforms, closed=False, context=None, style="min_edge"):
     """
     shape       - A collection of points
                   May be a callback
@@ -98,16 +181,18 @@ def sweep(shape, transforms, closed=False, context=None):
                 a_shape = get_shape(shape, context=context, call=True)
                 if a_shape is None:
                     break
-            transformed_shapes.append(transform @ a_shape)
+            if len(a_shape) > 0:
+                transformed_shapes.append(transform @ a_shape)
     else:
         for transform in transforms:
             if callable(shape):
                 a_shape = get_shape(shape, context=context, call=True)
                 if a_shape is None:
                     break
-            transformed_shapes.append(transform @ a_shape)
+            if len(a_shape) > 0:
+                transformed_shapes.append(transform @ a_shape)
 
-    return generate_faces(transformed_shapes, style="min_edge", closed=closed)
+    return generate_faces(transformed_shapes, style=style, closed=closed)
 
 def path_sweep(shape, path, closed=False):
 
@@ -143,6 +228,64 @@ def path_sweep(shape, path, closed=False):
         transforms.append( Affine.trans3d(path[0]) @ rotations[0] @ Affine.zrot3d(-correction + correction % tau) )
 
     return sweep(shape, transforms, closed)
+
+def roundingSweepShape(context):
+
+    off = 0
+
+    # This is a bit of hack. I need a copy
+    # of the scad object and the copy.copy() function
+    # doesn't work.
+    shape = context.shape.offset(delta=0)
+    # Bottom round resize shape
+    # Bottom and top zones may overlap
+    if context.pos < np.fabs(context.r[0]):
+        z = 1 - context.pos / np.fabs(context.r[0])
+        off = -(1 - np.sin(np.acos(z))) * context.r[0]
+        shape = shape.offset(delta=float(off))
+
+    # Top round resize shape
+    if context.h - context.pos < np.fabs(context.r[1]):
+        z = 1 - (context.h - context.pos) / np.fabs(context.r[1])
+        off = -(1 - np.sin(np.acos(z))) * context.r[1]
+        shape = shape.offset(delta=float(off))
+
+    return shape
+
+def roundingSweepTransform(context):
+    if context.next is None: return None
+    context.pos = context.next
+
+    m = Affine.trans3d([0, 0, context.pos])
+    if context.next == context.h:
+        context.next = None
+    else:
+        context.next += context.step
+        if context.next > context.h:
+            context.next = context.h
+
+    return m
+
+@dataclass()
+class RoundingSweepContext():
+    # Shape context
+    shape   :   ...     = None
+    r       :   list    = None
+
+    # Transform context
+    h       :   float   = None
+    step    :   float   = None
+    pos     :   float   = 0
+    next    :   float   = 0
+
+def rounding_sweep(shape, h, r):
+    """
+    A linear vertical sweep of shape offset by r[0] on bottom and r[1] on top
+    """
+    fn, fa, fs = get_fnas()
+    step = fs if fs > 0 else h / fn if fn > 0 else 0.3
+    context = RoundingSweepContext(shape=shape, h=h, r=r, step=step)
+    return sweep(shape=roundingSweepShape, transforms=roundingSweepTransform, closed=False, context=context, style="tri_array")
 
 @dataclass()
 class RotateSweepContext():
@@ -185,7 +328,6 @@ def rotate_sweep(shape, angle=360):
 
 def plot3d(func, x_range, y_range, base=1, context=None):
 
-    prof_lap_start("plot")
     minz = None
     plot = []
     for y in y_range:
@@ -209,5 +351,4 @@ def plot3d(func, x_range, y_range, base=1, context=None):
         row[0].z  = bottom
         row[-1].z = bottom
 
-    prof_lap_pause("plot")
     return generate_faces(plot, closed=False)

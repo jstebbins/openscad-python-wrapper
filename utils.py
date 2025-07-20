@@ -6,7 +6,7 @@ def get_fnas():
     try:
         fn = __main__.fn
     except AttributeError:
-        fn = None
+        fn = 0
     try:
         fs = __main__.fs
     except AttributeError:
@@ -45,6 +45,7 @@ def prof_lap_finish(key, msg=""):
     global prof_dict
 
     if not profile: return
+    prof_lap_pause(key)
     print(f"{msg} - {key} ellapsed: {prof_dict[key].ellapse / (1000*1000)}ms")
     del prof_dict[key]
 

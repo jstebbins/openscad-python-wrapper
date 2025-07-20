@@ -514,8 +514,10 @@ class Object():
         # 2D objects only have points, no faces
         if len(mesh) > 1:
             return Mesh(points=Points(mesh[0]), faces=mesh[1])
-        else:
+        elif len(mesh) == 1:
             return Mesh(points=Points(mesh[0]), faces=None)
+        else:
+            return Mesh(points=Points([]), faces=None)
 
     def translate(self, v):
         C = type(self)
@@ -538,7 +540,7 @@ class Object():
         if res.oscad_obj is not None:
             res.oscad_obj = res.oscad_obj.rotate(list(v))
         elif hasattr(res, "origin"):
-            m = Affine.rot3d(v)
+            m = Affine.rot3d([ np.radians(v[0]), np.radians(v[1]), np.radians(v[2]) ])
             res.origin = m @ res.origin
 
         return res
@@ -555,17 +557,22 @@ class Object():
     def color(self, c):
         C = type(self)
         res = C.copy(self)
-
         res.oscad_obj = res.oscad_obj.color(c)
-
         return res
 
     def scale(self, s):
         C = type(self)
         res = C.copy(self)
-
         res.oscad_obj = res.oscad_obj.scale(s)
+        return res
 
+    def offset(self, r=None, delta=None, chamfer=False):
+        C = type(self)
+        res = C.copy(self)
+        if r is not None:
+            res.oscad_obj = res.oscad_obj.offset(r=r)
+        else:
+            res.oscad_obj = res.oscad_obj.offset(delta=delta, chamfer=chamfer)
         return res
 
     def up(self, val):
@@ -698,6 +705,11 @@ class Object():
 
     def has_tag(self, tag):
         return tag in self.tags
+
+    def __copy__(self):
+        C = type(self)
+        obj = C.copy(self)
+        return obj
 
     @classmethod
     def copy(cls, object):
@@ -1785,6 +1797,17 @@ def union(*args):
     res = C.copy(obj)
     oscad_objs = Object.get_oscad_obj_list(*args)
     res.oscad_obj = scad.union(oscad_objs)
+    return res
+
+def hull(*args):
+    """
+    Union a list of objects
+    """
+    obj = Object.get_first_obj(*args)
+    C = type(obj)
+    res = C.copy(obj)
+    oscad_objs = Object.get_oscad_obj_list(*args)
+    res.oscad_obj = scad.hull(oscad_objs)
     return res
 
 def show(*args):
