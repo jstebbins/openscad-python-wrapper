@@ -45,6 +45,31 @@ def test_prisnoid():
 
     return t1 | t2
 
+def test_rounding_sweep():
+    l = 50
+    d = 40
+    h = 30 + 0.02
+    r = [18, -8]
+
+    c = circle(d=d)
+    l1 = l - d
+    print(l1)
+    shape = hull(c.left(l1 / 2) | c.right(l1 / 2))
+    mesh = rounding_sweep(shape, h, r)
+    t1 = polyhedron(mesh[0], mesh[1]).up(5)
+
+    l = 50 + 10
+    d = 40 + 10
+    h = 30 + 5
+
+    c = circle(d=d)
+    l1 = l - d
+    shape = hull(c.left(l1 / 2) | c.right(l1 / 2))
+    mesh = rounding_sweep(shape, h, r)
+    t2 = polyhedron(mesh[0], mesh[1])
+
+    return t2 - t1
+
 def test_rotate_sweep():
     def sweepShapeExample(context):
         if not hasattr(context, "radius"):
@@ -272,16 +297,17 @@ def run_tests():
         pos       : list    = (0, 0, 0)
 
     tests = [
-        Test(name="Sweep",          enabled=True,  func=test_sweep,         pos=[  0,   0,   0]),
-        Test(name="Path Sweep",     enabled=True,  func=test_path_sweep,    pos=[-50,   0,   0]),
-        Test(name="Rotate Sweep",   enabled=True,  func=test_rotate_sweep,  pos=[ 50,   0,   0]),
-        Test(name="Prisnoid",       enabled=True,  func=test_prisnoid,      pos=[  0, -50,   0]),
-        Test(name="Cylinder",       enabled=True,  func=test_cylinder,      pos=[  0,  60,   0]),
-        Test(name="Sphere",         enabled=True,  func=test_sphere,        pos=[ 50,   0,  50]),
-        Test(name="Justify",        enabled=True,  func=test_justify,       pos=[  0,   0, -40]),
+        Test(name="Sweep",          enabled=True,  func=test_sweep,             pos=[  0,   0,   0]),
+        Test(name="Path Sweep",     enabled=True,  func=test_path_sweep,        pos=[-50,   0,   0]),
+        Test(name="Rotate Sweep",   enabled=True,  func=test_rotate_sweep,      pos=[ 50,   0,   0]),
+        Test(name="Rounding Sweep", enabled=True,  func=test_rounding_sweep,    pos=[-50,   0, -50]),
+        Test(name="Prisnoid",       enabled=True,  func=test_prisnoid,          pos=[  0, -50,   0]),
+        Test(name="Cylinder",       enabled=True,  func=test_cylinder,          pos=[  0,  60,   0]),
+        Test(name="Sphere",         enabled=True,  func=test_sphere,            pos=[ 50,   0,  50]),
+        Test(name="Justify",        enabled=True,  func=test_justify,           pos=[  0,   0, -40]),
         Test(name="Composition",    enabled=False, func=test_composition),
         Test(name="Attach",         enabled=False, func=test_attach),
-        Test(name="Plot",           enabled=True,  func=test_plot,          pos=[  0,   0, -60]),
+        Test(name="Plot",           enabled=True,  func=test_plot,              pos=[  0,   0, -60]),
     ]
 
     u = run_enabled_tests(tests)
