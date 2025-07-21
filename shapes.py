@@ -890,7 +890,7 @@ class cylinder(Object):
         else:
             # Enhanced cylinder
             cpath           = cyl_path(r=r, l=h, ends=ends)
-            self.oscad_obj  = scad.polygon(cpath.deaffine().list()).rotate_extrude()
+            self.oscad_obj  = scad.polygon(cpath.deaffine().list()).rotate_extrude(convexity=2)
 
         r_mid = np.fmin(r[0], r[1]) + np.fabs(r[0] - r[1]) / 2
         angle = np.degrees(np.atan((r[0] - r[1]) / h))
