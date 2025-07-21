@@ -14,9 +14,9 @@ fs = 1
 def test_sphere():
     c = cube(4, center=True).color("blue")
     t1 = sphere(d=30)
-    t1 |= c.attach(t1, "top")
+    t1 |= c.attach(t1, "top", justify="bottom")
     t1 |= c.attach(t1, "bottom")
-    t1 |= c.attach(t1, "left")
+    t1 |= c.attach(t1, "left", justify="bottom")
     t1 |= c.attach(t1, "right")
     t1 |= c.attach(t1, "front")
     t1 |= c.attach(t1, "back")
@@ -29,7 +29,7 @@ def test_cylinder():
     t1 |= c.attach(t1, where="right")
 
     t2 = cylinder(h=50, r=[15, 10], ends=EdgeTreatment(round=-4)).right(35)
-    t2 |= c.attach(t2, where="top")
+    t2 |= c.attach(t2, where="top", justify="bottom")
 
     t3 = cylinder(h=50, r=[15, 10], ends=EdgeTreatment(chamf=-4)).left(35)
     t3 |= c.attach(t3, where="left")
@@ -40,7 +40,7 @@ def test_prisnoid():
     c = cube(4, center=True).color("blue")
     t1 = prisnoid(40, 20, 6, 4, 25, shift=[-5, -5])
     t2 = wireframe(t1, unify=True).fwd(45)
-    t1 |= c.attach(t1, where="right")
+    t1 |= c.attach(t1, where="right", justify="bottom")
     t1 |= c.attach(t1, where="top")
 
     return t1 | t2
