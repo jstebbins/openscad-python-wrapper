@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from sweep import *
 
 print(sys.path)
+print(sys.modules["openscad"])
+#print(dir(scad))
+#print(scad.circle)
+
 
 fn = 0
 fa = 1
@@ -53,7 +57,6 @@ def test_rounding_sweep():
 
     c = circle(d=d)
     l1 = l - d
-    print(l1)
     shape = hull(c.left(l1 / 2) | c.right(l1 / 2))
     mesh = rounding_sweep(shape, h, r)
     t1 = polyhedron(mesh[0], mesh[1]).up(5)
