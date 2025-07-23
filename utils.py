@@ -34,12 +34,16 @@ def prof_lap_start(key):
     if key not in prof_dict:
         prof_dict[key] = ProfAccumulate(lap_start = time.clock_gettime_ns(time.CLOCK_MONOTONIC), ellapse = 0)
     prof_dict[key].lap_start = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
+    prof_dict[key].running = True
 
 def prof_lap_pause(key):
     global prof_dict
 
+    if not prof_dict[key].running:
+        return
     now = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
     prof_dict[key].ellapse += now - prof_dict[key].lap_start
+    prof_dict[key].running = False
 
 def prof_lap_finish(key, msg=""):
     global prof_dict
