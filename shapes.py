@@ -219,7 +219,7 @@ def extrude_from_to(obj, pt1, pt2):
     return obj
 
 def line(pt1, pt2, d=None):
-    if d is None: d = fs / 2
+    if d is None: d = fs / 10
     circle = scad.circle(d=d)
     return extrude_from_to(circle, pt1, pt2)
 
@@ -321,6 +321,13 @@ class Object():
         self.face_cache     = None
         self.hooks          = dict()
         self.tags           = set()
+
+        hook_defs = [
+            ["center", [ 0,   0, 0], 0],
+        ]
+        for hook in hook_defs:
+            m = Affine.rot3d(np.radians(hook[1])) @ Affine.trans3d([0, 0, hook[2]])
+            self.attachment_hook(hook[0], m)
 
     def clone(self, object):
         for k, v in object.__dict__.items():
@@ -496,7 +503,7 @@ class Object():
             dd += 1
         return [edges[ii] for ii in range(len(edges)) if ii not in deleted]
 
-    def wireframe(self):
+    def wireframe(self, unify=False):
         """
         Create a wireframe visualization of the Object
 
@@ -506,7 +513,7 @@ class Object():
         fine with an Object that has lots of detail.
         """
 
-        wf = wireframe(self)
+        wf = wireframe(self, unify=unify)
         return wf
 
     def mesh(self):
@@ -884,7 +891,7 @@ class cylinder(Object):
 
         r               = tup(r, 2)
         self.name       = "Cylinder"
-        if ends is None:
+        if False:#ends is None:
             # Simple cylinder, use OpenSCAD
             self.oscad_obj  = scad.cylinder(r1=r[0], r2=r[1], h=h, center=True)
         else:
@@ -1159,8 +1166,8 @@ class Faces():
         self.faces          = self.prune_degenerate(self.faces)
         self.faceMetrics    = [FaceMetrics() for _ in range(len(self.faces))]
 
-        self.get_normals(self.faces, self.faceMetrics)
-        self.get_areas(self.faces, self.faceMetrics)
+        self.get_normals()
+        self.get_areas()
 
         # Unify adjacent triangles that share a common normal
         self.faces, deleted = self.unify_faces(self.faces, self.faceMetrics)
@@ -1177,7 +1184,10 @@ class Faces():
         sosd = 0
         for fm in self.faceMetrics:
             sosd += (fm.area - self.mean_area) ** 2
-        self.deviation_area = np.sqrt(sosd / (len(self.faceMetrics) - 1))
+        if len(self.faceMetrics) > 1:
+            self.deviation_area = np.sqrt(sosd / (len(self.faceMetrics) - 1))
+        else:
+            self.deviation_area = self.mean_area
 
     def prune_degenerate(self, faces):
         """
@@ -1192,7 +1202,7 @@ class Faces():
 
         degenerate = set()
         for ii in range(len(faces)):
-            points = self.get_points(faces[ii])
+            points = self.get_points(faces[ii]).deaffine()
             edge1 = points[1] - points[0]
             edge2 = points[2] - points[0]
             if edge1.cross(edge2).norm() < eps:
@@ -1238,25 +1248,53 @@ class Faces():
 
         return matrix
 
-    def get_normals(self, faces, faceMetrics):
+    def get_normals(self):
+        faces       = self.faces
+        faceMetrics = self.faceMetrics
         for ii in range(len(faces)):
             points = self.get_points(faces[ii])
             faceMetrics[ii].normal = vector_axis(unit(points[2] - points[1]), unit(points[0] - points[1]))
 
-    def get_areas(self, faces, faceMetrics):
+    def tri_area(self, faces, index):
+        points = self.get_points(faces[index])
+        s1 = np.sqrt((points[0][0] - points[1][0]) ** 2 +
+                     (points[0][1] - points[1][1]) ** 2 +
+                     (points[0][2] - points[1][2]) ** 2)
+        s2 = np.sqrt((points[1][0] - points[2][0]) ** 2 +
+                     (points[1][1] - points[2][1]) ** 2 +
+                     (points[1][2] - points[2][2]) ** 2)
+        s3 = np.sqrt((points[0][0] - points[2][0]) ** 2 +
+                     (points[0][1] - points[2][1]) ** 2 +
+                     (points[0][2] - points[2][2]) ** 2)
+        semi = (s1 + s2 + s3) / 2
+        return np.sqrt(semi * (semi - s1) * (semi - s2) * (semi - s3))
+
+    def poly_area(self, faces, index):
+        # Get points and map them onto XY plane
+        m = self.get_matrix(index).inv()
+        points = self.get_points(faces[index])
+        points = m @ points
+        # Calculate area
+        sum1 = 0
+        sum2 = 0
+        for ii in range(len(points)):
+            jj = (ii + 1) % len(points)
+            sum1 += points[ii].x * points[jj].y
+            sum2 += points[ii].y * points[jj].x
+
+        result = (sum1 - sum2) / 2
+        return result
+
+    def get_areas(self):
+        faces       = self.faces
+        faceMetrics = self.faceMetrics
         for ii in range(len(faces)):
-            points = self.get_points(faces[ii])
-            s1 = np.sqrt((points[0][0] - points[1][0]) ** 2 +
-                         (points[0][1] - points[1][1]) ** 2 +
-                         (points[0][2] - points[1][2]) ** 2)
-            s2 = np.sqrt((points[1][0] - points[2][0]) ** 2 +
-                         (points[1][1] - points[2][1]) ** 2 +
-                         (points[1][2] - points[2][2]) ** 2)
-            s3 = np.sqrt((points[0][0] - points[2][0]) ** 2 +
-                         (points[0][1] - points[2][1]) ** 2 +
-                         (points[0][2] - points[2][2]) ** 2)
-            semi = (s1 + s2 + s3) / 2
-            faceMetrics[ii].area = np.sqrt(semi * (semi - s1) * (semi - s2) * (semi - s3))
+            if len(faces[ii]) == 3:
+                # More complex objects tend to be made of lots of triangles
+                # So use optimized calculation for triangles
+                faceMetrics[ii].area = self.tri_area(faces, ii)
+            else:
+                faceMetrics[ii].area = self.poly_area(faces, ii)
 
     def unify_faces(self, faces, faceMetrics):
         """
@@ -1275,7 +1313,6 @@ class Faces():
         # Sort the edges so we can do a *much* faster binary search
         edges.sort(key=functools.cmp_to_key(Faces.edge_cmp))
 
-        ii = 0
         curface = 0
         deleted = set()
         while curface < len(faces):
@@ -1284,20 +1321,50 @@ class Faces():
                 continue
             face        = faces[curface]
             neighbors   = self.neighbors(faces, curface, edges, deleted, faceMetrics)
-            if len(neighbors) > 0:
+            neighbors.reverse()
+            for neighbor in neighbors:
                 # As long as we find new neighbors to merged faces, we reprocess the same face
-                new_face = self.merge_face(faces, curface, neighbors, faceMetrics)
+                new_face = self.merge_face(faces, curface, neighbor, faceMetrics)
                 faces[curface] = new_face
-                deleted.update([n.face for n in neighbors])
-            else:
+                deleted.add(neighbor.face)
+
+            if len(neighbors) < 1:
                 curface += 1
-            ii += 1
-            assert ii < 1000000, f"Loop seems to be infinite!"
 
         # Remove the deleted faces
         faces   = [faces[ii]   for ii in range(len(faces)) if ii not in deleted]
 
+        '''
+        When merging faces, sometimes the added neighbor face closes a loop and results in a duplicate
+        point in the resulting face.  This is ineffecient to detect and fix during the merge,
+        so I'm doing this as a final pass.
+        '''
+        for ff in range(len(faces)):
+            faces[ff] = self.dedup_face(faces[ff])
+
         return faces, deleted
+
+    def dedup_face(self, face):
+        while True:
+            new_face = None
+            stop = False
+            for ii in range(len(face)):
+                for jj in range(ii + 1, len(face)):
+                    if face[ii] == face[jj]:
+                        if jj - ii > len(face) - jj + ii:
+                            new_face = face[ii:jj]
+                        else:
+                            new_face = face[0:ii]
+                            new_face.extend(face[jj:len(face)])
+                        stop = True
+                        break
+                if stop:
+                    break
+            if new_face is not None:
+                face = new_face
+            else:
+                break
+        return face
 
     def edge_cmp(edge1, edge2):
         """
@@ -1346,17 +1413,15 @@ class Faces():
         Helper function to unify_faces
         """
 
-
-        matches = []
         start   = Faces.binary_search_first(edge, edges)
         for ii in range(start, len(edges)):
             candidate = edges[ii]
             if edge != candidate[0]: break
             if (candidate[1] != curface and candidate[1] not in deleted and 
                 faceMetrics[candidate[1]].normal @ faceMetrics[curface].normal > (1 - eps)):
-                matches.append(candidate[1])
+                return candidate[1]
 
-        return matches
+        return None
 
     class Neighbor():
         def __init__(self, face, ind):
@@ -1377,34 +1442,32 @@ class Faces():
         Helper function to unify_faces
         """
 
-        face        = faces[curface]
-        neighbors   = set()
-        prev        = final = face[0]
+        neighbors = []
+        matches = set()
+        face    = faces[curface]
+        prev    = final = face[0]
         for ii in range(1, len(face)):
             pt = face[ii]
             ind = ii - 1
             edge = [np.fmin(prev, pt), np.fmax(prev, pt)]
-            matches = self.search_edges(edge, edges, curface, deleted, faceMetrics)
-            if len(matches) > 0:
-                # One match on an edge is expected
-                match = matches[0]  # match is a neighbor face, ind an edge of the current face
-                n = Faces.Neighbor(face = match, ind = ind)
-                if n not in neighbors:
-                    neighbors.add(n)
+            match = self.search_edges(edge, edges, curface, deleted, faceMetrics)
+            if match is not None and match not in matches:
+                    n = Faces.Neighbor(face = match, ind = ind)
+                    neighbors.append(n)
+                    matches.add(match)
             prev = pt
+
         ind = len(face) - 1
         edge = [np.fmin(prev, final), np.fmax(prev, final)]
-        matches = self.search_edges(edge, edges, curface, deleted, faceMetrics)
-        if len(matches) > 0:
-            # One match on an edge is expected
-            match = matches[0]  # match is a face, ind an edge of the current face
+        match = self.search_edges(edge, edges, curface, deleted, faceMetrics)
+        if match is not None and match not in matches:
             n = Faces.Neighbor(face = match, ind = ind)
-            if n not in neighbors:
-                neighbors.add(n)
+            neighbors.append(n)
+            matches.add(match)
 
         return neighbors
 
-    def merge_face(self, faces, curface, neighbors, faceMetrics):
+    def merge_face(self, faces, curface, neighbor, faceMetrics):
         """
         For each edge in the current face, merge any neighbor to that edge
 
@@ -1412,27 +1475,24 @@ class Faces():
         """
 
         face = faces[curface]
+        nface = len(face)
         new_face = []
         # for each edge in face, merge any neighbor to that edge
-        for ii in range(len(face)):
-            # get any neighbor to edge face[ii], may not exist
-            neighbor = list(filter(lambda n: n.ind == ii, neighbors))
-            assert len(neighbor) <= 1, f"Unexpected number of neighbors to an edge {len(neighbor)}"
-            if len(neighbor) == 0:
+        for ii in range(nface):
+            # merge any neighbor to edge face[ii], may not exist
+            if neighbor.ind != ii:
                 new_face.append(face[ii])
             else:
-                neighbor = neighbor[0]
                 neighbor_face = faces[neighbor.face]
+                nnface = len(neighbor_face)
                 neighbor_area = faceMetrics[neighbor.face].area
                 faceMetrics[curface].area += neighbor_area
                 ind = neighbor_face.index(face[ii])  # an exception will be raised if not found!
-                assert ind >= 0, f"Expected to find point {face[ii]} in neighbor face {neighbor[0]}"
-                stop = face[ii+1] if ii + 1 < len(face) else face[0]
+                stop = face[ii+1] if ii + 1 < nface else face[0]
                 stop_ind = neighbor_face.index(stop) # an exception will be raised if not found!
                 while ind != stop_ind:
                     new_face.append(neighbor_face[ind])
-                    ind = ind + 1 if ind + 1 < len(neighbor_face) else 0
-
+                    ind = (ind + 1) % nnface
 
         return new_face
 
