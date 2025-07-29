@@ -891,7 +891,7 @@ class cylinder(Object):
 
         r               = tup(r, 2)
         self.name       = "Cylinder"
-        if False:#ends is None:
+        if ends is None:
             # Simple cylinder, use OpenSCAD
             self.oscad_obj  = scad.cylinder(r1=r[0], r2=r[1], h=h, center=True)
         else:
@@ -1474,25 +1474,26 @@ class Faces():
         Helper function to unify_faces
         """
 
-        face = faces[curface]
-        nface = len(face)
-        new_face = []
-        # for each edge in face, merge any neighbor to that edge
-        for ii in range(nface):
-            # merge any neighbor to edge face[ii], may not exist
-            if neighbor.ind != ii:
-                new_face.append(face[ii])
-            else:
-                neighbor_face = faces[neighbor.face]
-                nnface = len(neighbor_face)
-                neighbor_area = faceMetrics[neighbor.face].area
-                faceMetrics[curface].area += neighbor_area
-                ind = neighbor_face.index(face[ii])  # an exception will be raised if not found!
-                stop = face[ii+1] if ii + 1 < nface else face[0]
-                stop_ind = neighbor_face.index(stop) # an exception will be raised if not found!
-                while ind != stop_ind:
-                    new_face.append(neighbor_face[ind])
-                    ind = (ind + 1) % nnface
+        face        = faces[curface]
+        face_len    = len(face)
+        nface       = faces[neighbor.face]
+        nface_len   = len(nface)
+
+        # Add face points up to neighbor edge
+        new_face = face[0:neighbor.ind]
+
+        # Add neighbor points until it rejoins current face
+        ind         = nface.index(face[neighbor.ind])   # an exception will be raised if not found!
+        stop        = face[(neighbor.ind + 1) % face_len]
+        stop_ind    = nface.index(stop)                 # an exception will be raised if not found!
+        while ind != stop_ind:
+            new_face.append(nface[ind])
+            ind = (ind + 1) % nface_len
+        # Update face metrics area of current face to include neighbor
+        faceMetrics[curface].area += faceMetrics[neighbor.face].area
+
+        # Add remaining current face points
+        new_face.extend(face[neighbor.ind + 1:face_len])
 
         return new_face
 
